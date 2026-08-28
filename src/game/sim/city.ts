@@ -17,7 +17,7 @@ import { checkProgression, resolveBudget } from "./systems/economy";
 import { ZONE_DEPTH, facingRoad, rebuildNetwork } from "./systems/network";
 import { updatePopulation } from "./systems/population";
 import { isHooked, updateServices } from "./systems/services";
-import { ASSIGN_PERIOD, assignTraffic, updateVehicles } from "./systems/traffic";
+import { assignTraffic, tickAssignment, updateVehicles } from "./systems/traffic";
 import {
   refreshCandidates,
   removeBuilding,
@@ -169,6 +169,8 @@ export class CitySim {
   nextVehicleId = 1;
   vehicleBudget = 140;
 
+  /** Versión de edificios con la que se rasterizó por última vez la cobertura. */
+  private coverageVersion = -1;
   private netDirty = true;
   private servicesDirty = true;
 
@@ -228,7 +230,9 @@ export class CitySim {
       this.servicesDirty = true;
     }
     if (this.servicesDirty || this.tickCount % 6 === 0) {
-      updateServices(this);
+      const coverageStale = this.servicesDirty || this.coverageVersion !== this.buildingsVersion;
+      updateServices(this, coverageStale);
+      if (coverageStale) this.coverageVersion = this.buildingsVersion;
       this.servicesDirty = false;
       this.fieldsVersion++;
     }
@@ -240,7 +244,7 @@ export class CitySim {
     updateGrowth(this);
     if (this.tickCount % 20 === 0) updateUpgrades(this);
     if (this.tickCount % 30 === 0) updateAbandon(this);
-    if (this.tickCount % ASSIGN_PERIOD === 0) assignTraffic(this);
+    tickAssignment(this);
     if (this.tickCount % 14 === 0) {
       updateEnvironment(this);
       this.fieldsVersion++;

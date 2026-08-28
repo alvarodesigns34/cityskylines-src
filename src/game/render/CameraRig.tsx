@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { input } from "../input";
 import { N, clamp, idx, inBounds } from "../sim/types";
 import { sim, useGame } from "../store";
+import { viewState, viewTarget } from "./viewTarget";
 
 type ControlsProbe = {
   getYaw: () => number;
@@ -251,6 +252,8 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       tz.current + Math.cos(yaw.current) * cr,
     );
     camera.lookAt(tx.current, groundY + 0.4, tz.current);
+    viewTarget.set(tx.current, groundY, tz.current);
+    viewState.distance = dist.current;
 
     if (typeof window !== "undefined") {
       window.__controlsTest = {

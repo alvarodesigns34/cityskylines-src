@@ -51,9 +51,9 @@ export function resolveBudget(sim: CitySim) {
   // Cumplimiento fiscal: una ciudad contenta paga; una ciudad harta, no.
   const compliance = Math.min(1.15, 0.62 + sim.happiness / 150);
   const lv = sim.avgLandValue;
-  const baseR = sim.pop * (7 + lv * 20);
-  const baseC = commercialJobs * (22 + lv * 30);
-  const baseI = industrialJobs * 24;
+  const baseR = sim.pop * (6 + lv * 17);
+  const baseC = commercialJobs * (19 + lv * 26);
+  const baseI = industrialJobs * 21;
 
   const incomeR = baseR * sim.taxR * compliance;
   const incomeC = baseC * sim.taxC * compliance;
@@ -64,7 +64,10 @@ export function resolveBudget(sim: CitySim) {
   const admin = sim.hasCityHall ? 0.9 : 1;
   const interest = sim.debt * DAILY_INTEREST;
   const principal = sim.debt > 0 ? Math.min(sim.debt, sim.debt * AMORTIZATION) : 0;
-  const expense = (upkeepService + upkeepUtility + roadUpkeep) * admin + interest + principal;
+  // Retirada de urgencia: lo que no trata la ciudad hay que sacarlo pagando fuera.
+  const haulage = Math.max(0, sim.garbageNeed - sim.garbageCapacity) * 2.2;
+  const expense =
+    (upkeepService + upkeepUtility + roadUpkeep) * admin + haulage + interest + principal;
 
   sim.debt = Math.max(0, sim.debt - principal);
   sim.money = Math.round(sim.money + income - expense);
@@ -79,13 +82,18 @@ export function resolveBudget(sim: CitySim) {
     { label: "Servicios", amount: Math.round(upkeepService * admin) },
     { label: "Suministros", amount: Math.round(upkeepUtility * admin) },
     { label: "Vías", amount: Math.round(roadUpkeep * admin) },
+    { label: "Basura sin tratar", amount: Math.round(haulage) },
     { label: "Deuda", amount: Math.round(interest + principal) },
   ].filter((l) => l.amount !== 0) as BudgetLine[];
 
-  // Basura acumulada: si no hay planta suficiente, se amontona.
+  // Basura acumulada: si no hay planta suficiente, se amontona. Se limita a un mes de
+  // producción para que la cifra siga siendo legible y el castigo no sea infinito.
   const surplus = sim.garbageNeed - sim.garbageCapacity;
-  sim.garbageBacklog = Math.max(0, sim.garbageBacklog + surplus * 0.6);
-  if (surplus < 0) sim.garbageBacklog = Math.max(0, sim.garbageBacklog + surplus * 0.4);
+  const cap = Math.max(100, sim.garbageNeed * 30);
+  sim.garbageBacklog = Math.min(
+    cap,
+    Math.max(0, sim.garbageBacklog + surplus * (surplus > 0 ? 0.6 : 1.4)),
+  );
 
   if (sim.money < 0 && sim.debt < debtCeiling(sim)) {
     // Descubierto automático: se convierte en deuda antes de romper la ciudad.

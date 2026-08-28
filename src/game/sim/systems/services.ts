@@ -15,7 +15,7 @@ const dist = new Uint8Array(CELLS);
  * suministro no se apaga media ciudad de golpe: baja `powerRatio`, y ese ratio degrada la
  * ocupación, el ánimo y el crecimiento de forma continua (apagones parciales).
  */
-export function updateServices(sim: CitySim) {
+export function updateServices(sim: CitySim, rebuildCoverage = true) {
   const g = sim.grid;
 
   let powerSupply = 0;
@@ -61,6 +61,9 @@ export function updateServices(sim: CitySim) {
   if (waterSupply > 0) spreadFromSuppliers(sim, g.watered, "waterSupply");
 
   // --- 3. Cobertura de servicios urbanos ---
+  // Rasterizar los seis campos cuesta lo mismo que todo lo demás junto y solo cambia cuando
+  // cambia el parque de equipamientos: se recalcula bajo demanda, no en cada pasada.
+  if (!rebuildCoverage) return;
   for (const k of SERVICES) sim.grid.service[k]!.fill(0);
   const load: Record<string, { cap: number }> = {};
   for (const k of SERVICES) load[k] = { cap: 0 };

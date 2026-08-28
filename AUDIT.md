@@ -113,3 +113,45 @@ Con un puente sobre el río el depósito de agua deja de tener sentido.
 | **Generador paramétrico de edificios** en vez de una función por tipo | Familias, variantes, plantas, tejados y paletas se combinan; añadir contenido deja de ser copiar geometría. |
 | **Geometría de ventanas separada** por familia | Permite un `InstancedMesh` emisivo aparte para la iluminación nocturna, sin duplicar el edificio. |
 | **Guardado v2 con clave nueva** | El mapa pasa de 36×36 a 64×64: un guardado v1 no es migrable de forma honesta. La clave v1 se deja intacta en vez de corromperla. |
+
+## 5. Verificación tras la reescritura
+
+Medido con la simulación ejecutada en headless y con la partida pilotada en Chromium.
+
+### Rendimiento (ciudad de 4.100 habitantes, 545 edificios, 1.406 casillas de vía)
+
+| | antes de optimizar | después |
+|---|---|---|
+| Coste medio del tick | 784 µs | **640 µs** |
+| Pico de un solo frame | 6,9 ms (asignación de tráfico) | **0,7 ms** (se reparte en 9 ticks) |
+| Llamadas de dibujo | 163 | **106** |
+| Guardado | 145 kB en 7 ms | igual |
+
+Desglose por subsistema en esa misma ciudad: `rebuildNetwork` 0,34 ms · `updateServices`
+1,6 ms (cada 6 ticks, y la rasterización de cobertura solo cuando cambia el parque de
+equipamientos) · `updateEnvironment` 0,86 ms (cada 14 ticks) · `updatePopulation` 0,15 ms.
+
+Las 106 llamadas incluyen el pase de sombras. La caída de 163 a 106 vino de centrar la cámara
+de sombras en el punto que mira el jugador en vez de en la posición de la cámara: la mitad de
+la ciudad visible caía fuera del mapa de sombras y se dibujaba en sombra.
+
+### Regresión de las funcionalidades heredadas
+
+22 comprobaciones automatizadas sobre el navegador, todas en verde: menú → partida, dock por
+categorías, bloqueos por hito, trazado por arrastre, colocación de central/depósito/vertedero,
+zonificación, crecimiento, población y empleo, progresión, selección e inspección, las diez
+capas de datos, los tres paneles, impuestos, crédito, pausa, velocidades, guardado, carga y
+demolición.
+
+### Errores reales encontrados y corregidos por el camino
+
+1. `onPointerMissed` del Canvas se disparaba en **todos** los clics (ninguna malla tiene
+   manejadores de puntero de R3F) y borraba la selección recién hecha: inspeccionar no
+   funcionaba.
+2. La cámara de sombras se centraba en la posición de la cámara, no en su objetivo.
+3. Los edificios del jugador se podían colocar aislados de la red, sin dar servicio y sin
+   ningún aviso.
+4. `roadDist` solo se recalculaba en el tick, así que con el juego en pausa no se podía
+   construir junto a una calle recién trazada.
+5. El ánimo podía quedarse clavado en 3 sin ninguna consecuencia: ahora una ciudad infeliz
+   pierde vecinos y deja de atraer demanda, y la basura sin tratar cuesta dinero.

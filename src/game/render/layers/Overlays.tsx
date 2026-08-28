@@ -16,7 +16,19 @@ const ZONE_COLOR = ["#000000", "#3fa06a", "#3d7ec4", "#d09a3a"];
 /** Parcelas zonificadas sin edificar: rayado de color por uso y densidad. */
 export function ZonePlates() {
   const rev = useSimVersion((s) => s.zonesVersion + s.buildingsVersion);
+  const tool = useGame((s) => s.tool);
+  const overlay = useGame((s) => s.overlay);
   const ref = useRef<THREE.InstancedMesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  // Las parcelas se ven a plena intensidad mientras se zonifica y se apagan el resto del
+  // tiempo: la información aparece cuando sirve y el resto del rato el viewport queda limpio.
+  const zoning = tool.startsWith("zone-") || tool === "bulldoze";
+  useFrame(() => {
+    const m = matRef.current;
+    if (!m) return;
+    const target = overlay !== "none" ? 0.1 : zoning ? 0.5 : 0.17;
+    m.opacity += (target - m.opacity) * 0.14;
+  });
 
   useEffect(() => {
     const mesh = ref.current;
@@ -48,7 +60,7 @@ export function ZonePlates() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, CELLS]} frustumCulled={false} renderOrder={2}>
       <boxGeometry args={[0.84, 0.02, 0.84]} />
-      <meshBasicMaterial transparent opacity={0.42} toneMapped={false} />
+      <meshBasicMaterial ref={matRef} transparent opacity={0.17} toneMapped={false} depthWrite={false} />
     </instancedMesh>
   );
 }

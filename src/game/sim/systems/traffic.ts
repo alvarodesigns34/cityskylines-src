@@ -6,32 +6,61 @@ import { capacityOf, findPath, nearestRoad, roadSurface } from "./network";
 const CELLS = N * N;
 const load = new Float32Array(CELLS);
 
-/** Cada cuántos ticks se reasignan los flujos de la ciudad. */
+/** Cada cuántos ticks arranca una reasignación completa de flujos. */
 export const ASSIGN_PERIOD = 24;
 /** Pares origen-destino que se muestrean por reasignación. */
 const OD_SAMPLES = 72;
+/** Muestras que se enrutan por tick: reparte el coste en vez de concentrarlo en un frame. */
+const OD_PER_TICK = 8;
 const MAX_ROUTES = 64;
+
+// Estado de la asignación en curso.
+const homes: number[] = [];
+const homeWeight: number[] = [];
+const works: number[] = [];
+const workWeight: number[] = [];
+let totalHome = 0;
+let totalWork = 0;
+let perSample = 0;
+let cursor = -1;
+let pendingRoutes: Int32Array[] = [];
 
 /**
  * Tráfico agregado + vehículos visibles.
  *
- * No se simula un agente por persona. Cada medio día se muestrean pares casa→trabajo, se
- * enrutan con A* sobre la red (coste = clase de vía + congestión previa) y se acumula la carga
- * en cada casilla. De ahí sale `grid.traffic`, que alimenta la congestión, el ruido, la
- * contaminación y el ánimo. Los coches que se ven en pantalla recorren *esas mismas rutas*,
- * así que el atasco visible y el atasco simulado son el mismo.
+ * No se simula un agente por persona. Se muestrean pares casa→trabajo, se enrutan con A* sobre
+ * la red (coste = clase de vía + congestión previa) y se acumula la carga en cada casilla. De
+ * ahí sale `grid.traffic`, que alimenta la congestión, el ruido, la contaminación y el ánimo.
+ * Los coches que se ven en pantalla recorren *esas mismas rutas*, así que el atasco visible y
+ * el atasco simulado son el mismo.
+ *
+ * Las 72 rutas no se calculan de golpe (era un pico de ~7 ms en una sola frame con una ciudad
+ * grande): se reparten de ocho en ocho a lo largo de nueve ticks y se publican al terminar.
  */
 export function assignTraffic(sim: CitySim) {
+  beginAssignment(sim);
+  while (cursor >= 0) stepAssignment(sim);
+}
+
+/** Un trozo de la asignación. Lo llama el tick; arranca un ciclo nuevo cuando toca. */
+export function tickAssignment(sim: CitySim) {
+  if (cursor < 0) {
+    if (sim.tickCount % ASSIGN_PERIOD !== 0) return;
+    beginAssignment(sim);
+  }
+  if (cursor >= 0) stepAssignment(sim);
+}
+
+function beginAssignment(sim: CitySim) {
   const g = sim.grid;
   load.fill(0);
-  sim.routes.length = 0;
-
-  const homes: number[] = [];
-  const homeWeight: number[] = [];
-  const works: number[] = [];
-  const workWeight: number[] = [];
-  let totalHome = 0;
-  let totalWork = 0;
+  homes.length = 0;
+  homeWeight.length = 0;
+  works.length = 0;
+  workWeight.length = 0;
+  totalHome = 0;
+  totalWork = 0;
+  pendingRoutes = [];
 
   for (let k = 0; k < sim.buildings.length; k++) {
     const b = sim.buildings[k]!;
@@ -54,14 +83,21 @@ export function assignTraffic(sim: CitySim) {
   if (!homes.length || !works.length) {
     g.traffic.fill(0);
     sim.congestion = 0;
+    sim.routes.length = 0;
+    cursor = -1;
     return;
   }
+  // Viajes diarios que representa cada muestra (ida y vuelta).
+  const commuters = Math.min(totalHome * 2.5 * 0.58, totalWork) * 2;
+  perSample = commuters / OD_SAMPLES;
+  cursor = 0;
+}
 
-  // Viajes diarios que representa cada muestra.
-  const commuters = Math.min(totalHome * 2.5 * 0.58, totalWork);
-  const perSample = commuters / OD_SAMPLES;
-
-  for (let s = 0; s < OD_SAMPLES; s++) {
+function stepAssignment(sim: CitySim) {
+  if (cursor < 0) return;
+  const g = sim.grid;
+  const end = Math.min(OD_SAMPLES, cursor + OD_PER_TICK);
+  for (; cursor < end; cursor++) {
     const a = sim.buildings[pickWeighted(sim, homes, homeWeight, totalHome)]!;
     const c = sim.buildings[pickWeighted(sim, works, workWeight, totalWork)]!;
     const from = nearestRoad(g, a.x, a.z, a.w, a.d);
@@ -70,10 +106,15 @@ export function assignTraffic(sim: CitySim) {
     const { path } = findPath(g, from, to, 4000);
     if (!path || path.length < 2) continue;
     for (let i = 0; i < path.length; i++) load[path[i]!] += perSample;
-    if (sim.routes.length < MAX_ROUTES) sim.routes.push(path);
+    if (pendingRoutes.length < MAX_ROUTES) pendingRoutes.push(path);
   }
+  if (cursor < OD_SAMPLES) return;
+  commit(sim);
+  cursor = -1;
+}
 
-  // Normalizar por capacidad y suavizar en el tiempo para que no parpadee.
+function commit(sim: CitySim) {
+  const g = sim.grid;
   let jamSum = 0;
   let jamW = 0;
   for (let i = 0; i < CELLS; i++) {
@@ -83,6 +124,7 @@ export function assignTraffic(sim: CitySim) {
     }
     const cap = capacityOf(g, i);
     const ratio = cap > 0 ? load[i]! / cap : 0;
+    // Suavizado temporal: la congestión no debe parpadear entre reasignaciones.
     g.traffic[i] = g.traffic[i]! * 0.4 + Math.min(2.5, ratio) * 0.6;
     if (load[i]! > 0) {
       jamSum += Math.min(1.6, g.traffic[i]!) * load[i]!;
@@ -90,11 +132,11 @@ export function assignTraffic(sim: CitySim) {
     }
   }
   sim.congestion = jamW > 0 ? clamp01(jamSum / jamW) : 0;
+  sim.routes = pendingRoutes;
 
-  // Los viajes de cada edificio, para la ficha de inspección.
   for (const b of sim.buildings) {
     const d = DEFS[b.kind]!;
-    b.trips = Math.round((d.homes * 2.5 * 0.58 + d.jobs * 0.55) * b.occupancy);
+    b.trips = Math.round((d.homes * 2.5 * 0.58 * 2 + d.jobs * 0.55) * b.occupancy);
   }
 }
 

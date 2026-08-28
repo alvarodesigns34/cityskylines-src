@@ -8,6 +8,7 @@ import { skyFor } from "../daynight";
 import { createSkyMaterial, createTerrainMaterial, createWaterMaterial } from "../materials";
 import { TERRAIN_COLORS } from "../palettes";
 import { useSimVersion } from "../useSimVersion";
+import { viewState, viewTarget } from "../viewTarget";
 
 /** Cuánto sobresale el faldón del mapa hacia el mar. */
 const SKIRT = 14;
@@ -213,15 +214,27 @@ export function Sky() {
 
     const sun = sunRef.current;
     if (sun) {
-      // La sombra sigue al objetivo de cámara para mantener resolución donde se mira.
-      const tx = camera.position.x;
-      const tz = camera.position.z;
-      sun.target.position.set(tx, 0, tz);
+      // La sombra se centra en el punto que MIRA la cámara, no en dónde está la cámara.
+      const { x: tx, y: ty, z: tz } = viewTarget;
+      sun.target.position.set(tx, ty, tz);
       sun.target.updateMatrixWorld();
-      sun.position.set(tx + sky.sunDir.x * 90, sky.sunDir.y * 90 + 6, tz + sky.sunDir.z * 90);
+      const reach = Math.max(120, viewState.distance * 2.6);
+      sun.position.set(tx + sky.sunDir.x * reach, ty + sky.sunDir.y * reach + 8, tz + sky.sunDir.z * reach);
       sun.color.copy(sky.sunColor);
       sun.intensity = sky.sunIntensity;
       sun.castShadow = sky.daylight > 0.12;
+      // La extensión del mapa de sombras acompaña al zoom: nitidez cerca, cobertura lejos.
+      const half = THREE.MathUtils.clamp(viewState.distance * 1.05, 26, 95);
+      const cam = sun.shadow.camera;
+      if (cam.left !== -half) {
+        cam.left = -half;
+        cam.right = half;
+        cam.top = half;
+        cam.bottom = -half;
+        cam.near = 1;
+        cam.far = reach * 2.4;
+        cam.updateProjectionMatrix();
+      }
     }
     if (hemiRef.current) {
       // El horizonte del amanecer/atardecer es muy saturado: si se usa tal cual como luz de
@@ -241,8 +254,17 @@ export function Sky() {
       <mesh ref={domeRef} material={material} frustumCulled={false} renderOrder={-1}>
         <sphereGeometry args={[900, 32, 20]} />
       </mesh>
-      <directionalLight ref={sunRef} castShadow intensity={2.2} position={[60, 90, 40]}>
-        <orthographicCamera attach="shadow-camera" args={[-46, 46, 46, -46, 1, 260]} />
+      <directionalLight
+        ref={sunRef}
+        castShadow
+        intensity={2.2}
+        position={[60, 90, 40]}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.04}
+      >
+        <orthographicCamera attach="shadow-camera" args={[-50, 50, 50, -50, 1, 320]} />
       </directionalLight>
       <hemisphereLight ref={hemiRef} intensity={0.6} />
       <ambientLight ref={ambRef} intensity={0.25} />

@@ -106,6 +106,8 @@ export function updatePopulation(sim: CitySim) {
       // el bienestar decide cuánto más se llena, no si se llena.
       target = powered * watered * (0.55 + 0.45 * b.wellbeing);
       target *= 0.55 + 0.45 * clamp01(1 - sim.unemployment * 1.4);
+      // Una ciudad infeliz pierde vecinos: si el ánimo se hunde, la gente se marcha.
+      target *= 0.4 + 0.6 * clamp01((sim.happiness - 12) / 48);
     } else if (d.zone === "C") {
       target = powered * watered * (0.45 + 0.55 * b.wellbeing) * (0.35 + 0.65 * trade);
       target *= 0.35 + 0.65 * (sim.jobFill[d.jobEdu] ?? 1);

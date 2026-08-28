@@ -47,6 +47,8 @@ export function updateDemand(sim: CitySim) {
 
   // Sin trabajo no llegan vecinos; sin vecinos no abre nadie.
   if (sim.pop > 40 && sim.unemployment > 0.28) dR *= 0.35;
+  // Nadie se muda a una ciudad que no funciona.
+  if (sim.happiness < 28) dR *= 0.25 + (sim.happiness / 28) * 0.5;
   if (sim.pop < 45) dR = Math.max(dR, 0.62);
   if (sim.pop > 25 && sim.jobs < sim.workers * 0.8) {
     dC = Math.max(dC, 0.5);
