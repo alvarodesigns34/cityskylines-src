@@ -1,6 +1,6 @@
 # Skyline Mini
 
-Constructor de ciudades 3D compacto, inspirado en *Cities: Skylines*. Repositorio: [alvarodesigns34/cityskylines](https://github.com/alvarodesigns34/cityskylines).
+Constructor de ciudades 3D compacto, inspirado en *Cities: Skylines*. Repositorio: [alvarodesigns34/cityskylines-src](https://github.com/alvarodesigns34/cityskylines-src).
 
 Bucle: construir calles → zonificar → dar luz y agua → ver crecer la ciudad → equilibrar presupuesto y demanda.
 
