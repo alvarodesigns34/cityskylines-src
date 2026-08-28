@@ -31,15 +31,15 @@ const KEYFRAMES: Array<{
   ground: number;
   water: number;
 }> = [
-  { h: 0, skyTop: 0x080d1c, skyHorizon: 0x141d33, sun: 0x2a3d66, sunI: 0.1, amb: 0x1b2740, ambI: 0.34, ground: 0x151c26, water: 0x0d1826 },
-  { h: 5, skyTop: 0x16233f, skyHorizon: 0x3d3350, sun: 0x6b5a80, sunI: 0.18, amb: 0x2b3450, ambI: 0.4, ground: 0x232a33, water: 0x18293c },
-  { h: 6.6, skyTop: 0x3d6390, skyHorizon: 0xe0906a, sun: 0xffb079, sunI: 1.1, amb: 0x6d7fa0, ambI: 0.5, ground: 0x4a4438, water: 0x40607c },
+  { h: 0, skyTop: 0x0a1224, skyHorizon: 0x1a253d, sun: 0x8fa8d8, sunI: 0.42, amb: 0x44557c, ambI: 0.72, ground: 0x2c3546, water: 0x16283c },
+  { h: 5, skyTop: 0x1a2a48, skyHorizon: 0x453a5c, sun: 0x9d90b8, sunI: 0.5, amb: 0x51597e, ambI: 0.74, ground: 0x333c48, water: 0x22364c },
+  { h: 6.6, skyTop: 0x3d6390, skyHorizon: 0xe0a184, sun: 0xffc9a0, sunI: 0.72, amb: 0x7d8fae, ambI: 0.6, ground: 0x4a4c46, water: 0x40607c },
   { h: 9, skyTop: 0x5b93c9, skyHorizon: 0xb9d4e6, sun: 0xfff0d6, sunI: 2.1, amb: 0x9fbcd8, ambI: 0.58, ground: 0x59634a, water: 0x33769b },
   { h: 13, skyTop: 0x4b8ed0, skyHorizon: 0xc3dced, sun: 0xfffaf0, sunI: 2.5, amb: 0xaecbe4, ambI: 0.62, ground: 0x5e6a4d, water: 0x2f7ea8 },
   { h: 17, skyTop: 0x5590c8, skyHorizon: 0xd0d6dd, sun: 0xffeecb, sunI: 2.0, amb: 0xa6c0d6, ambI: 0.56, ground: 0x5b6448, water: 0x33769b },
-  { h: 19.4, skyTop: 0x2f4a7a, skyHorizon: 0xe8834f, sun: 0xff9a5c, sunI: 1.0, amb: 0x6d6a86, ambI: 0.48, ground: 0x453c34, water: 0x3d5570 },
-  { h: 21, skyTop: 0x121c36, skyHorizon: 0x2e2c4a, sun: 0x3d4a72, sunI: 0.2, amb: 0x252f4a, ambI: 0.38, ground: 0x1c222c, water: 0x152238 },
-  { h: 24, skyTop: 0x080d1c, skyHorizon: 0x141d33, sun: 0x2a3d66, sunI: 0.1, amb: 0x1b2740, ambI: 0.34, ground: 0x151c26, water: 0x0d1826 },
+  { h: 19.4, skyTop: 0x2f4a7a, skyHorizon: 0xe89a70, sun: 0xffbb92, sunI: 0.66, amb: 0x74809e, ambI: 0.6, ground: 0x44474a, water: 0x3d5570 },
+  { h: 21, skyTop: 0x14203c, skyHorizon: 0x35334f, sun: 0x8098c8, sunI: 0.46, amb: 0x4a577c, ambI: 0.72, ground: 0x2a3240, water: 0x1b2b42 },
+  { h: 24, skyTop: 0x0a1224, skyHorizon: 0x1a253d, sun: 0x8fa8d8, sunI: 0.42, amb: 0x44557c, ambI: 0.72, ground: 0x2c3546, water: 0x16283c },
 ];
 
 const cA = new THREE.Color();

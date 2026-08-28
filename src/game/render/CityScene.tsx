@@ -16,7 +16,7 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
   return (
     <Canvas
       className="absolute inset-0"
-      shadows
+      shadows="percentage"
       dpr={[1, 1.75]}
       camera={{ fov: 42, near: 0.5, far: 2200, position: [30, 34, 52] }}
       gl={{
@@ -24,9 +24,6 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
         powerPreference: "high-performance",
         preserveDrawingBuffer: true,
         alpha: false,
-      }}
-      onPointerMissed={() => {
-        if (interactive) useGame.getState().setSelected(null);
       }}
       onCreated={({ gl, scene }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;

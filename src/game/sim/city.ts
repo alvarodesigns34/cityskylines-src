@@ -272,8 +272,17 @@ export class CitySim {
     this.catalogVersion++;
   }
 
+  /**
+   * La red se recalcula al instante (una BFS sobre 4.096 casillas: microsegundos), no en el
+   * siguiente tick. Así el cursor sabe de inmediato si una parcela tiene calle, y se puede
+   * construir junto a una calle recién trazada incluso con el juego en pausa.
+   * Lo caro —servicios, campos ambientales— sí se aplaza al tick.
+   */
   markNetworkDirty() {
-    this.netDirty = true;
+    const r = rebuildNetwork(this.grid);
+    this.roadCount = r.roadCount;
+    this.connectedCity = r.connected;
+    this.netDirty = false;
     this.servicesDirty = true;
     this.roadsVersion++;
   }
@@ -376,6 +385,10 @@ export class CitySim {
         }
       }
       if (kind === "water_pump" && !touchesWater) return none("Debe tocar el río o la costa", def.cost);
+      // Todo lo que coloca el jugador necesita enganche viario: sin él no da servicio,
+      // no reparte luz ni agua y no llega nadie a trabajar.
+      if (!isHooked(this, x, z, def.w, def.d))
+        return none(`Necesita una calle a ${ZONE_DEPTH} casillas o menos`, def.cost);
       return { ok: true, cost: def.cost, ...fp };
     }
 

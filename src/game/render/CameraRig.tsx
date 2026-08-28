@@ -125,7 +125,10 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       const cell = cellAt(e.clientX, e.clientY);
       if (tool === "select") {
         mode.current = "pan";
-        if (cell) useGame.getState().setSelected(cell);
+        // Selecciona la parcela, o limpia si se ha pulsado fuera del mapa. (No se usa
+        // `onPointerMissed` de R3F: ninguna malla tiene manejadores de puntero, así que se
+        // dispara en *todos* los clics y borraba la selección recién hecha.)
+        useGame.getState().setSelected(cell);
         return;
       }
       mode.current = "paint";

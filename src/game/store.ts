@@ -50,6 +50,10 @@ function exposeQa() {
     snapshot: () => city.snapshot(),
     inspect: (x: number, z: number) => city.inspect(x, z),
     entry: () => city.entry,
+    setTool: (tool: Tool) => useGame.getState().setTool(tool),
+    setOverlay: (overlay: OverlayKind) => useGame.getState().setOverlay(overlay),
+    select: (x: number, z: number) => useGame.getState().setSelected({ x, z }),
+    newCity: (seed: number) => useGame.getState().startNew(seed),
     setTier: (t: number) => {
       city.tier = t;
       city.markCatalogChanged();

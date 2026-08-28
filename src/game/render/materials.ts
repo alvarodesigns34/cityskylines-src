@@ -118,11 +118,13 @@ const waterFragment = /* glsl */ `
 
     vec3 h = normalize(uSun + viewDir);
     float spec = pow(max(dot(n, h), 0.0), 80.0);
-    col += uSunColor * spec * 1.4 * (1.0 - uNight * 0.75) * detail;
+    col += uSunColor * spec * 1.4 * (1.0 - uNight * 0.6) * detail;
 
     float foam = smoothstep(0.13, 0.0, depth) * inside
                * (0.45 + 0.55 * sin(vWorld.x * 3.1 + vWorld.z * 2.7 + uTime * 1.8));
-    col = mix(col, vec3(0.92, 0.95, 0.96), foam * 0.4 * detail);
+    // La espuma se apaga de noche: si no, la orilla brilla como si fuera de día.
+    vec3 foamColor = mix(vec3(0.92, 0.95, 0.96), vec3(0.34, 0.42, 0.5), uNight);
+    col = mix(col, foamColor, foam * 0.4 * detail);
 
     float fogFactor = smoothstep(uFogNear, uFogFar, dist);
     col = mix(col, uFogColor, fogFactor);

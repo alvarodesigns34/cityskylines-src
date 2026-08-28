@@ -221,10 +221,12 @@ export function Sky() {
       sun.position.set(tx + sky.sunDir.x * 90, sky.sunDir.y * 90 + 6, tz + sky.sunDir.z * 90);
       sun.color.copy(sky.sunColor);
       sun.intensity = sky.sunIntensity;
-      sun.castShadow = sky.sunIntensity > 0.35;
+      sun.castShadow = sky.daylight > 0.12;
     }
     if (hemiRef.current) {
-      hemiRef.current.color.copy(sky.skyHorizon);
+      // El horizonte del amanecer/atardecer es muy saturado: si se usa tal cual como luz de
+      // cielo, tiñe de naranja hasta la cara en sombra. Se mezcla hacia el ambiente neutro.
+      hemiRef.current.color.copy(sky.skyHorizon).lerp(sky.ambientColor, 0.62);
       hemiRef.current.groundColor.copy(sky.groundColor);
       hemiRef.current.intensity = sky.ambientIntensity;
     }

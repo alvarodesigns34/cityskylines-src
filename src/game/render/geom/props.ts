@@ -45,6 +45,9 @@ export function lampGeometry(): THREE.BufferGeometry {
     box(0.06, 0.68, 0, 0.13, 0.025, 0.025, 0x8d9298),
     box(0.13, 0.655, 0, 0.1, 0.045, 0.07, 0x9aa0a6),
     box(0.13, 0.632, 0, 0.085, 0.02, 0.055, 0xfff0c8, { emis: 1 }),
+    // Charco de luz sobre el asfalto: de noche la calle se lee sin cientos de luces reales.
+    { g: "cyl", x: 0.13, y: 0.012, z: 0, sx: 0.34, sy: 0.005, sz: 0.34, color: 0xffe0b0, emis: 0.1, seg: 10 },
+    { g: "cyl", x: 0.13, y: 0.014, z: 0, sx: 0.17, sy: 0.005, sz: 0.17, color: 0xffe8c4, emis: 0.16, seg: 10 },
   ]);
 }
 
