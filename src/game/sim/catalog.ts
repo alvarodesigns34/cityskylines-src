@@ -1,0 +1,262 @@
+import type { BuildingKind, Tool, Zone } from "./types";
+
+export interface BuildingDef {
+  kind: BuildingKind;
+  name: string;
+  zone: Zone;
+  level: 1 | 2 | 3;
+  w: number;
+  d: number;
+  residents: number;
+  jobs: number;
+  power: number;
+  water: number;
+  powerSupply: number;
+  waterSupply: number;
+  upkeep: number;
+  cost: number;
+  happiness: number;
+}
+
+export const DEFS: Record<BuildingKind, BuildingDef> = {
+  house: {
+    kind: "house",
+    name: "Casa",
+    zone: "R",
+    level: 1,
+    w: 1,
+    d: 1,
+    residents: 6,
+    jobs: 0,
+    power: 1,
+    water: 1,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 0,
+    cost: 0,
+    happiness: 1,
+  },
+  apartments: {
+    kind: "apartments",
+    name: "Bloque",
+    zone: "R",
+    level: 2,
+    w: 1,
+    d: 1,
+    residents: 18,
+    jobs: 0,
+    power: 3,
+    water: 3,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 4,
+    cost: 0,
+    happiness: 0,
+  },
+  tower: {
+    kind: "tower",
+    name: "Torre",
+    zone: "R",
+    level: 3,
+    w: 1,
+    d: 1,
+    residents: 42,
+    jobs: 2,
+    power: 6,
+    water: 6,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 10,
+    cost: 0,
+    happiness: -1,
+  },
+  shop: {
+    kind: "shop",
+    name: "Tienda",
+    zone: "C",
+    level: 1,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 5,
+    power: 2,
+    water: 1,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 2,
+    cost: 0,
+    happiness: 1,
+  },
+  market: {
+    kind: "market",
+    name: "Mercado",
+    zone: "C",
+    level: 2,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 14,
+    power: 4,
+    water: 2,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 6,
+    cost: 0,
+    happiness: 2,
+  },
+  office: {
+    kind: "office",
+    name: "Oficina",
+    zone: "C",
+    level: 3,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 32,
+    power: 7,
+    water: 3,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 12,
+    cost: 0,
+    happiness: 1,
+  },
+  warehouse: {
+    kind: "warehouse",
+    name: "Almacén",
+    zone: "I",
+    level: 1,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 8,
+    power: 3,
+    water: 1,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 3,
+    cost: 0,
+    happiness: -2,
+  },
+  factory: {
+    kind: "factory",
+    name: "Fábrica",
+    zone: "I",
+    level: 2,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 18,
+    power: 6,
+    water: 3,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 8,
+    cost: 0,
+    happiness: -4,
+  },
+  works: {
+    kind: "works",
+    name: "Factoría",
+    zone: "I",
+    level: 3,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 28,
+    power: 9,
+    water: 4,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 14,
+    cost: 0,
+    happiness: -6,
+  },
+  power: {
+    kind: "power",
+    name: "Central eléctrica",
+    zone: "none",
+    level: 1,
+    w: 2,
+    d: 2,
+    residents: 0,
+    jobs: 6,
+    power: 0,
+    water: 2,
+    powerSupply: 72,
+    waterSupply: 0,
+    upkeep: 95,
+    cost: 14000,
+    happiness: -8,
+  },
+  "water-tower": {
+    kind: "water-tower",
+    name: "Depósito de agua",
+    zone: "none",
+    level: 1,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 1,
+    power: 1,
+    water: 0,
+    powerSupply: 0,
+    waterSupply: 48,
+    upkeep: 40,
+    cost: 6500,
+    happiness: 0,
+  },
+  park: {
+    kind: "park",
+    name: "Parque",
+    zone: "none",
+    level: 1,
+    w: 1,
+    d: 1,
+    residents: 0,
+    jobs: 1,
+    power: 0,
+    water: 1,
+    powerSupply: 0,
+    waterSupply: 0,
+    upkeep: 12,
+    cost: 800,
+    happiness: 14,
+  },
+};
+
+export const GROWTH: Record<Zone, BuildingKind[]> = {
+  none: [],
+  R: ["house", "apartments", "tower"],
+  C: ["shop", "market", "office"],
+  I: ["warehouse", "factory", "works"],
+};
+
+export const TOOL_META: Record<
+  Tool,
+  { name: string; hint: string; cost: string; shortcut: string }
+> = {
+  select: { name: "Inspeccionar", hint: "Pulsa una parcela o un edificio", cost: "", shortcut: "1" },
+  road: { name: "Calle", hint: "Arrastra para trazar calles. Los puentes cuestan más.", cost: "$40", shortcut: "2" },
+  "zone-r": { name: "Vivienda", hint: "Residencial. Necesita calle, luz y agua.", cost: "Gratis", shortcut: "3" },
+  "zone-c": { name: "Comercio", hint: "Empleo comercial e impuestos.", cost: "Gratis", shortcut: "4" },
+  "zone-i": { name: "Industria", hint: "Empleo industrial. Genera humo.", cost: "Gratis", shortcut: "5" },
+  power: { name: "Luz", hint: "Central 2×2. La luz viaja por las calles.", cost: "$14k", shortcut: "6" },
+  water: { name: "Agua", hint: "Depósito. Las calles junto al río también captan agua.", cost: "$6.5k", shortcut: "7" },
+  park: { name: "Parque", hint: "Sube el ánimo alrededor.", cost: "$800", shortcut: "8" },
+  bulldoze: { name: "Demoler", hint: "Quita calles, zonas y edificios.", cost: "$15+", shortcut: "9" },
+};
+
+export const MILESTONES = [
+  { pop: 0, name: "Aldea", bonus: 0 },
+  { pop: 40, name: "Pueblo", bonus: 8000 },
+  { pop: 120, name: "Villa", bonus: 16000 },
+  { pop: 280, name: "Ciudad", bonus: 28000 },
+  { pop: 520, name: "Skyline", bonus: 45000 },
+];
+
+export const ROAD_COST = 40;
+export const BRIDGE_COST = 90;
+export const BULLDOZE_ROAD = 15;
+export const BULLDOZE_BUILDING = 40;
+export const START_MONEY = 56000;

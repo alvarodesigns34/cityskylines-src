@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# build / deploy
+dist/
+.output/
+.vercel/
+.nitro/
+.tanstack/
+.wrangler/
+
+# sandbox internals (keep app-env so auth stays off)
+.grok/*
+!.grok/app-env.json
+AGENTS.md
+
+# local / generated
+screenshots/
+artifacts/
+*.log
+.env
+.env.*
+.project_id
+.node_modules.lock
+.DS_Store
+*.local
+
+# editor
+.idea/
+.vscode/
