@@ -1,74 +1,189 @@
-import { CITY_NAMES, hash2, mulberry32 } from "./rng";
-import { N, type Tile, idx } from "./types";
+import { Grid } from "./grid";
+import { CITY_NAMES, fbm, hash2, mulberry32, ridged } from "./rng";
+import { N, ROAD, TERRAIN, idx } from "./types";
 
 export interface MapGen {
-  tiles: Tile[];
+  grid: Grid;
   name: string;
+  /** Casilla por la que entra la autovía; la cámara arranca mirando ahí. */
+  entry: { x: number; z: number };
 }
 
+export const WATER_LEVEL = 0;
+/** Altura máxima del terreno en unidades de mundo (1 unidad = 1 casilla). */
+export const MAX_HEIGHT = 7;
+
+function smoothstep(a: number, b: number, t: number): number {
+  const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * Genera un mapa 64×64 con relieve real: valle central habitable, colinas al norte,
+ * sierra en una esquina, río meandriforme con afluente, lago y costa al sur.
+ * El relieve no es solo decorativo: `slope` bloquea la construcción, encarece las vías
+ * y alimenta el valor del suelo a través de `scenery`.
+ */
 export function generateMap(seed: number): MapGen {
   const rand = mulberry32(seed);
   const name = CITY_NAMES[Math.floor(rand() * CITY_NAMES.length)] ?? "Riverside";
-  const tiles: Tile[] = new Array(N * N);
+  const g = new Grid();
 
-  const riverX0 = N * (0.52 + (rand() - 0.5) * 0.08);
+  const s = seed & 0xffff;
+  // Orientación del relieve: qué esquina lleva la sierra.
+  const ridgeX = rand() < 0.5 ? 0.12 : 0.88;
+  const ridgeZ = 0.14 + rand() * 0.18;
+  const riverBase = 0.34 + rand() * 0.32;
+  const riverAmp = 4 + rand() * 5;
+  const riverPhase = rand() * 6.28;
+  const lakeX = 0.16 + rand() * 0.2;
+  const lakeZ = 0.62 + rand() * 0.2;
+  const lakeR = 3.4 + rand() * 2.4;
+
+  const riverCenter = (z: number) =>
+    riverBase * N + Math.sin(z * 0.09 + riverPhase) * riverAmp + Math.sin(z * 0.031 + 1.7) * (riverAmp * 0.5);
+
+  const elevation = (x: number, z: number): number => {
+    const nx = x / N;
+    const nz = z / N;
+    // Landform amplio.
+    let e = fbm(x / 26, z / 26, s, 4) * 0.85 + fbm(x / 9, z / 9, s + 31, 3) * 0.15;
+    e = Math.pow(e, 1.35);
+    // Sierra en una esquina.
+    const ridgeMask = smoothstep(0.42, 0.0, Math.hypot(nx - ridgeX, nz - ridgeZ) * 1.5);
+    e += ridged(x / 13, z / 13, s + 77, 4) * ridgeMask * 0.85;
+    // Caída hacia la costa sur.
+    e *= smoothstep(0.0, 0.22, 1 - nz) * 0.55 + 0.45;
+    e -= smoothstep(0.74, 1.0, nz) * 0.55;
+    // Bordes del mapa ligeramente bajos, para que la costa se lea.
+    const edge = Math.min(nx, 1 - nx, nz, 1 - nz);
+    e -= smoothstep(0.06, 0.0, edge) * 0.12;
+    return e * MAX_HEIGHT - 0.9;
+  };
 
   for (let z = 0; z < N; z++) {
     for (let x = 0; x < N; x++) {
-      const nx = x / (N - 1);
-      const nz = z / (N - 1);
-      const h =
-        0.18 +
-        Math.sin(nx * 4.2 + seed * 0.01) * 0.12 +
-        Math.cos(nz * 3.4) * 0.1 +
-        Math.sin((nx + nz) * 7.1) * 0.06 +
-        (hash2(x, z, seed) - 0.5) * 0.05;
+      const i = idx(x, z);
+      let e = elevation(x, z);
 
-      const meander = Math.sin(z * 0.28 + seed) * 3.2 + Math.sin(z * 0.07) * 1.4;
-      const riverCx = riverX0 + meander;
-      const riverW = 1.35 + Math.sin(z * 0.2) * 0.35;
-      const river = Math.abs(x - riverCx) < riverW && z > 1 && z < N - 1;
-      const coast = z > N - 3 && h < 0.28;
-      const pond = Math.hypot(x - N * 0.22, z - N * 0.78) < 2.2;
+      // Cauce principal.
+      const cx = riverCenter(z);
+      const halfW = 1.5 + Math.sin(z * 0.14 + 0.6) * 0.5 + (z / N) * 1.6;
+      const dRiver = Math.abs(x - cx);
+      if (dRiver < halfW + 3.5) {
+        const carve = smoothstep(halfW + 3.5, halfW * 0.4, dRiver);
+        e = e * (1 - carve) + (WATER_LEVEL - 1.1) * carve;
+      }
+      // Afluente que baja desde la sierra.
+      const tribZ = ridgeZ * N + (x - ridgeX * N) * 0.55;
+      const dTrib = Math.abs(z - tribZ);
+      if (x > Math.min(ridgeX * N, cx) - 2 && x < Math.max(ridgeX * N, cx) + 2 && dTrib < 4) {
+        const carve = smoothstep(4, 0.8, dTrib) * 0.75;
+        e = e * (1 - carve) + (WATER_LEVEL - 0.7) * carve;
+      }
+      // Lago.
+      const dLake = Math.hypot(x - lakeX * N, z - lakeZ * N);
+      if (dLake < lakeR + 3) {
+        const carve = smoothstep(lakeR + 3, lakeR * 0.5, dLake);
+        e = e * (1 - carve) + (WATER_LEVEL - 1.4) * carve;
+      }
 
-      let terrain: Tile["terrain"] = "grass";
-      if (river || coast || pond) terrain = "water";
-      else if (Math.abs(x - riverCx) < riverW + 1.2 || z > N - 4) terrain = "sand";
-
-      const height = terrain === "water" ? 0.02 : Math.max(0.04, h);
-      const tree =
-        terrain === "grass" &&
-        hash2(x, z, seed + 9) > 0.78 &&
-        !(z > 12 && z < 20 && x < 12);
-
-      tiles[idx(x, z)] = {
-        x,
-        z,
-        terrain,
-        height,
-        road: false,
-        highway: false,
-        zone: "none",
-        tree,
-        building: -1,
-        powered: false,
-        watered: false,
-        connected: false,
-      };
+      g.height[i] = e;
     }
   }
 
-  const hz = 16;
-  for (let x = 0; x <= 7; x++) {
-    for (const zz of [hz, hz + 1]) {
-      const t = tiles[idx(x, zz)];
-      if (!t) continue;
-      t.road = true;
-      t.highway = true;
-      t.tree = false;
-      t.zone = "none";
+  g.recomputeSlope();
+
+  for (let z = 0; z < N; z++) {
+    for (let x = 0; x < N; x++) {
+      const i = idx(x, z);
+      const e = g.height[i]!;
+      const slope = g.slope[i]!;
+      let terrain: number = TERRAIN.grass;
+      if (e < WATER_LEVEL) terrain = TERRAIN.water;
+      else if (e < WATER_LEVEL + 0.38) terrain = TERRAIN.sand;
+      else if (e > MAX_HEIGHT * 0.58 && slope > 0.3) terrain = TERRAIN.rock;
+      g.terrain[i] = terrain;
+
+      // Bosques: masa de ruido, evitando roca desnuda y cotas altas.
+      const forest = fbm(x / 11, z / 11, s + 211, 3);
+      const dense = forest > 0.56 && terrain === TERRAIN.grass && e < MAX_HEIGHT * 0.72;
+      g.tree[i] = dense && hash2(x, z, s + 5) > 0.42 ? 1 : 0;
     }
   }
 
-  return { tiles, name };
+  // Valor escénico: cerca del agua, arbolado y con vistas.
+  for (let z = 0; z < N; z++) {
+    for (let x = 0; x < N; x++) {
+      const i = idx(x, z);
+      if (g.terrain[i] === TERRAIN.water) continue;
+      let nearWater = 0;
+      for (let r = 1; r <= 5 && !nearWater; r++) {
+        for (const [dx, dz] of [
+          [r, 0],
+          [-r, 0],
+          [0, r],
+          [0, -r],
+          [r, r],
+          [-r, -r],
+          [r, -r],
+          [-r, r],
+        ] as const) {
+          const j = g.at(x + dx, z + dz);
+          if (j >= 0 && g.terrain[j] === TERRAIN.water) {
+            nearWater = 1 - (r - 1) / 5;
+            break;
+          }
+        }
+      }
+      const trees = g.tree[i] ? 0.25 : 0;
+      const view = Math.min(0.3, (g.height[i]! / MAX_HEIGHT) * 0.45);
+      g.scenery[i] = Math.min(1, nearWater * 0.55 + trees + view);
+    }
+  }
+
+  // Entrada de autovía: por el borde oeste, a la altura más llana disponible.
+  let bestZ = Math.floor(N / 2);
+  let bestScore = -Infinity;
+  for (let z = 6; z < N - 6; z++) {
+    let score = 0;
+    for (let x = 0; x < 10; x++) {
+      const i = idx(x, z);
+      if (g.terrain[i] === TERRAIN.water) score -= 10;
+      score -= g.slope[i]! * 6;
+      score += Math.min(g.height[i]!, 2);
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestZ = z;
+    }
+  }
+  const hz = bestZ;
+  const runway = 8;
+  // Explanada bajo la autovía para que entre sin rampas imposibles.
+  let base = 0;
+  for (let x = 0; x < runway; x++) base += Math.max(g.height[idx(x, hz)]!, WATER_LEVEL + 0.5);
+  base /= runway;
+  for (let x = 0; x < runway; x++) {
+    for (let dz = -2; dz <= 3; dz++) {
+      const z = hz + dz;
+      const i = g.at(x, z);
+      if (i < 0) continue;
+      const blend = smoothstep(3, 0, Math.abs(dz)) * smoothstep(runway + 3, runway - 2, x);
+      g.height[i] = g.height[i]! * (1 - blend) + base * blend;
+      if (blend > 0.5 && g.terrain[i] === TERRAIN.water) g.terrain[i] = TERRAIN.sand;
+    }
+  }
+  for (let x = 0; x < runway; x++) {
+    for (const z of [hz, hz + 1]) {
+      const i = g.at(x, z);
+      if (i < 0) continue;
+      g.road[i] = ROAD.highway;
+      g.tree[i] = 0;
+      g.terrain[i] = g.terrain[i] === TERRAIN.water ? TERRAIN.sand : g.terrain[i]!;
+    }
+  }
+  g.recomputeSlope();
+
+  return { grid: g, name, entry: { x: runway, z: hz } };
 }

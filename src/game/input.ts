@@ -7,6 +7,8 @@ const GAME_CODES = new Set([
   "KeyE",
   "KeyR",
   "KeyF",
+  "KeyT",
+  "KeyG",
   "Space",
   "ArrowUp",
   "ArrowDown",
@@ -34,6 +36,7 @@ class Input {
   panZ = 0;
   rotate = 0;
   zoom = 0;
+  tilt = 0;
 
   has(code: string) {
     return this.keys.has(code) || this.injected.has(code);
@@ -97,6 +100,7 @@ class Input {
     this.panZ = z;
     this.rotate = (this.has("KeyQ") ? 1 : 0) + (this.has("KeyE") ? -1 : 0);
     this.zoom = (this.has("KeyR") ? -1 : 0) + (this.has("KeyF") ? 1 : 0);
+    this.tilt = (this.has("KeyT") ? 1 : 0) + (this.has("KeyG") ? -1 : 0);
   }
 }
 

@@ -1,843 +1,777 @@
 import {
   BULLDOZE_BUILDING,
   BULLDOZE_ROAD,
-  BRIDGE_COST,
+  BULLDOZE_ZONE,
   DEFS,
-  GROWTH,
-  MILESTONES,
-  ROAD_COST,
+  ROADS,
   START_MONEY,
-  type BuildingDef,
+  TIERS,
+  UNIQUE_KINDS,
 } from "./catalog";
+import { Grid } from "./grid";
 import { generateMap } from "./generate";
-import { hash2, mulberry32 } from "./rng";
+import { mulberry32 } from "./rng";
 import { readSave, type SaveBlob, writeSave } from "./save";
+import { updateEnvironment } from "./systems/environment";
+import { checkProgression, resolveBudget } from "./systems/economy";
+import { ZONE_DEPTH, facingRoad, rebuildNetwork } from "./systems/network";
+import { updatePopulation } from "./systems/population";
+import { isHooked, updateServices } from "./systems/services";
+import { ASSIGN_PERIOD, assignTraffic, updateVehicles } from "./systems/traffic";
+import {
+  refreshCandidates,
+  removeBuilding,
+  spawnBuilding,
+  updateAbandon,
+  updateDemand,
+  updateGrowth,
+  updateUpgrades,
+} from "./systems/zoning";
 import {
   DIRS,
   N,
+  ROAD,
+  SERVICES,
   SIM_DT,
+  SPEEDS,
+  TERRAIN,
   TICKS_PER_DAY,
+  ZONE_ID,
+  clamp01,
+  idx,
+  inBounds,
   type Building,
-  type BuildingKind,
+  type BudgetLine,
+  type HistoryPoint,
   type Notice,
+  type OverlayKind,
   type Snapshot,
-  type Tile,
   type Tool,
   type Vehicle,
   type Zone,
-  idx,
-  inBounds,
 } from "./types";
 
 let noticeSeq = 1;
 
+export interface PlaceCheck {
+  ok: boolean;
+  reason?: string;
+  cost: number;
+  w: number;
+  d: number;
+}
+
+/**
+ * Estado y orquestación de la ciudad.
+ *
+ * `CitySim` guarda el estado y decide *cuándo* corre cada subsistema; las reglas viven en
+ * `systems/`. Nada de aquí conoce Three.js: el render solo lee este objeto y los contadores
+ * de versión para saber qué mallas rehacer.
+ */
 export class CitySim {
-  seed: number;
-  name: string;
-  tiles: Tile[];
+  seed = 0;
+  name = "";
+  grid!: Grid;
+  entry = { x: 0, z: 0 };
   buildings: Building[] = [];
   vehicles: Vehicle[] = [];
-  money = START_MONEY;
+  routes: Int32Array[] = [];
+  rand: () => number = Math.random;
+
+  // Tiempo
+  tickCount = 0;
   day = 1;
-  hour = 8;
-  tick = 0;
+  hour = 7;
+  dayFraction = 7 / 24;
+  acc = 0;
   speed = 1;
   paused = false;
-  milestoneIndex = 0;
-  notices: Notice[] = [];
-  noticeCooldown = new Map<string, number>();
-  nextId = 1;
-  nextVeh = 1;
-  acc = 0;
-  visAcc = 0;
-  buildingsVersion = 1;
-  roadsVersion = 1;
-  treesVersion = 1;
+
+  // Dinero
+  money = START_MONEY;
+  debt = 0;
+  taxR = 0.11;
+  taxC = 0.11;
+  taxI = 0.11;
   lastIncome = 0;
   lastExpense = 0;
-  demandR = 0.4;
-  demandC = 0.2;
-  demandI = 0.15;
-  happiness = 62;
+  incomeLines: BudgetLine[] = [];
+  expenseLines: BudgetLine[] = [];
+  history: HistoryPoint[] = [];
+
+  // Gente
   pop = 0;
-  jobs = 0;
+  households = 0;
+  homesCapacity = 0;
   workers = 0;
+  jobs = 0;
+  unemployment = 0;
+  eduLevel = 0.1;
+  healthLevel = 0.2;
+  safetyLevel = 0.2;
+  happiness = 55;
+  avgWellbeing = 0.4;
+  occupancyR = 0;
+  occupancyC = 0;
+  occupancyI = 0;
+  jobFill: number[] = [1, 1, 1];
+
+  // Entorno
+  avgPollution = 0;
+  avgNoise = 0;
+  avgLandValue = 0.3;
+  congestion = 0;
+  windX = 0.6;
+  windZ = -0.4;
+
+  // Servicios
   powerNeed = 0;
   powerSupply = 0;
+  powerRatio = 1;
   waterNeed = 0;
   waterSupply = 0;
+  waterRatio = 1;
+  garbageNeed = 0;
+  garbageCapacity = 0;
+  garbageRatio = 1;
+  garbageBacklog = 0;
+  serviceLevel: Record<string, number> = {};
+
+  // Demanda y progresión
+  demandR = 0.6;
+  demandC = 0.2;
+  demandI = 0.2;
+  tier = 0;
+  hasCityHall = false;
+
+  // Red
   roadCount = 0;
   connectedCity = false;
-  rand: () => number;
+
+  // UI
+  notices: Notice[] = [];
+  noticeCooldown = new Map<string, number>();
+  tool: Tool = "road-street";
+  overlay: OverlayKind = "none";
   hover: { x: number; z: number } | null = null;
   selected: { x: number; z: number } | null = null;
-  tool: Tool = "road";
-  overlay: "none" | "power" | "water" = "none";
-  brushDragging = false;
+
+  // Versiones para el render
+  buildingsVersion = 1;
+  roadsVersion = 1;
+  zonesVersion = 1;
+  treesVersion = 1;
+  terrainVersion = 1;
+  fieldsVersion = 1;
+  catalogVersion = 1;
+
+  nextBuildingId = 1;
+  nextVehicleId = 1;
+  vehicleBudget = 140;
+
+  private netDirty = true;
+  private servicesDirty = true;
 
   constructor(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0) {
     this.seed = seed >>> 0;
     this.rand = mulberry32(this.seed);
     const gen = generateMap(this.seed);
-    this.tiles = gen.tiles;
+    this.grid = gen.grid;
     this.name = gen.name;
-    this.recomputeServices();
-    this.rebuildSnapshotCache();
-    this.pushNotice("welcome", "Traza una calle desde la autovía, zona viviendas y conecta la luz.");
+    this.entry = gen.entry;
+    const a = (this.seed % 360) * (Math.PI / 180);
+    this.windX = Math.cos(a) * 0.9;
+    this.windZ = Math.sin(a) * 0.9;
+    for (const k of SERVICES) this.serviceLevel[k] = 0;
+    this.refreshAll();
+    this.pushNotice(
+      "welcome",
+      "Prolonga la autovía con calles, zonifica junto a ellas y engancha luz y agua.",
+      "info",
+    );
   }
 
-  static fromSave(blob: SaveBlob): CitySim {
-    const sim = Object.create(CitySim.prototype) as CitySim;
-    sim.seed = blob.seed;
-    sim.name = blob.name;
-    sim.tiles = blob.tiles;
-    sim.buildings = blob.buildings;
-    sim.vehicles = blob.vehicles ?? [];
-    sim.money = blob.money;
-    sim.day = blob.day;
-    sim.hour = blob.hour;
-    sim.tick = blob.tick;
-    sim.milestoneIndex = blob.milestoneIndex ?? 0;
-    sim.nextId = blob.nextId ?? 1;
-    sim.nextVeh = blob.nextVeh ?? 1;
-    sim.speed = 1;
-    sim.paused = false;
-    sim.notices = [];
-    sim.noticeCooldown = new Map();
-    sim.acc = 0;
-    sim.visAcc = 0;
-    sim.buildingsVersion = 1;
-    sim.roadsVersion = 1;
-    sim.treesVersion = 1;
-    sim.lastIncome = blob.snapshot?.income ?? 0;
-    sim.lastExpense = blob.snapshot?.expense ?? 0;
-    sim.demandR = blob.snapshot?.demandR ?? 0.3;
-    sim.demandC = blob.snapshot?.demandC ?? 0.2;
-    sim.demandI = blob.snapshot?.demandI ?? 0.15;
-    sim.happiness = blob.snapshot?.happiness ?? 60;
-    sim.pop = blob.snapshot?.pop ?? 0;
-    sim.jobs = blob.snapshot?.jobs ?? 0;
-    sim.workers = blob.snapshot?.workers ?? 0;
-    sim.powerNeed = 0;
-    sim.powerSupply = 0;
-    sim.waterNeed = 0;
-    sim.waterSupply = 0;
-    sim.roadCount = 0;
-    sim.connectedCity = false;
-    sim.rand = mulberry32(sim.seed + sim.tick);
-    sim.hover = null;
-    sim.selected = null;
-    sim.tool = "select";
-    sim.overlay = "none";
-    sim.brushDragging = false;
-    sim.recomputeServices();
-    sim.rebuildSnapshotCache();
-    sim.pushNotice("loaded", "Ciudad restaurada.");
-    return sim;
-  }
-
-  toSave(snapshot: Snapshot): SaveBlob {
-    return {
-      version: 1,
-      seed: this.seed,
-      name: this.name,
-      day: this.day,
-      hour: this.hour,
-      tick: this.tick,
-      money: this.money,
-      milestoneIndex: this.milestoneIndex,
-      tiles: this.tiles,
-      buildings: this.buildings,
-      vehicles: this.vehicles,
-      nextId: this.nextId,
-      nextVeh: this.nextVeh,
-      snapshot,
-    };
-  }
-
-  persist() {
-    writeSave(this.toSave(this.snapshot()));
-  }
-
-  tile(x: number, z: number): Tile | null {
-    if (!inBounds(x, z)) return null;
-    return this.tiles[idx(x, z)] ?? null;
-  }
+  // ------------------------------------------------------------------ tick
 
   step(dt: number) {
-    const d = Math.min(dt, 0.1);
-    const factor = this.paused ? 0 : this.speed === 3 ? 4 : this.speed === 2 ? 2 : 1;
+    const d = Math.min(dt, 0.12);
+    const factor = this.paused ? 0 : (SPEEDS[this.speed] ?? 1);
+    if (factor === 0) {
+      updateVehicles(this, 0);
+      return;
+    }
     this.acc += d * factor;
     let guard = 0;
-    while (this.acc >= SIM_DT && guard++ < 8) {
+    while (this.acc >= SIM_DT && guard++ < 12) {
       this.acc -= SIM_DT;
       this.simTick();
-      this.tickVehicles(SIM_DT);
     }
-    if (this.paused) this.tickVehicles(0);
+    updateVehicles(this, d * factor);
   }
 
   private simTick() {
-    this.tick += 1;
-    this.hour = 8 + ((this.tick % TICKS_PER_DAY) | 0);
-    if (this.tick % TICKS_PER_DAY === 0) {
-      this.day += 1;
-      this.resolveBudget();
+    this.tickCount++;
+    const t = this.tickCount % TICKS_PER_DAY;
+    this.dayFraction = t / TICKS_PER_DAY;
+    this.hour = this.dayFraction * 24;
+    if (t === 0) {
+      this.day++;
+      resolveBudget(this);
+      checkProgression(this);
     }
-    if (this.tick % 2 === 0) this.recomputeServices();
-    this.tickOccupancy();
-    this.tickGrowth();
-    this.tickAbandon();
-    if (this.tick % 3 === 0) this.spawnTraffic();
-    this.rebuildSnapshotCache();
-    this.checkMilestones();
-    this.maybeAdvice();
+
+    if (this.netDirty) {
+      const r = rebuildNetwork(this.grid);
+      this.roadCount = r.roadCount;
+      this.connectedCity = r.connected;
+      this.netDirty = false;
+      this.servicesDirty = true;
+    }
+    if (this.servicesDirty || this.tickCount % 6 === 0) {
+      updateServices(this);
+      this.servicesDirty = false;
+      this.fieldsVersion++;
+    }
+
+    updatePopulation(this);
+
+    if (this.tickCount % 8 === 0) updateDemand(this);
+    if (this.tickCount % 6 === 0) refreshCandidates(this);
+    updateGrowth(this);
+    if (this.tickCount % 20 === 0) updateUpgrades(this);
+    if (this.tickCount % 30 === 0) updateAbandon(this);
+    if (this.tickCount % ASSIGN_PERIOD === 0) assignTraffic(this);
+    if (this.tickCount % 14 === 0) {
+      updateEnvironment(this);
+      this.fieldsVersion++;
+    }
+    if (this.tickCount % 40 === 0) this.advise();
   }
 
-  private def(b: Building): BuildingDef {
-    return DEFS[b.kind];
+  /** Recalcula todo de golpe (arranque, carga, cambio grande). */
+  refreshAll() {
+    const r = rebuildNetwork(this.grid);
+    this.roadCount = r.roadCount;
+    this.connectedCity = r.connected;
+    this.netDirty = false;
+    updateServices(this);
+    updateEnvironment(this);
+    updatePopulation(this);
+    updateDemand(this);
+    refreshCandidates(this);
+    assignTraffic(this);
+    this.hasCityHall = this.buildings.some((b) => b.kind === "city_hall");
+    this.fieldsVersion++;
   }
 
-  private cellsOf(b: Building): Array<[number, number]> {
-    const cells: Array<[number, number]> = [];
-    for (let z = 0; z < b.d; z++) {
-      for (let x = 0; x < b.w; x++) cells.push([b.x + x, b.z + z]);
-    }
-    return cells;
-  }
-
-  roadAccess(x: number, z: number): boolean {
-    for (const [dx, dz] of DIRS) {
-      const t = this.tile(x + dx, z + dz);
-      if (t?.road && t.connected) return true;
-    }
-    const t = this.tile(x, z);
-    return Boolean(t?.road && t.connected);
-  }
-
-  lotServed(x: number, z: number, field: "powered" | "watered"): boolean {
-    for (const [dx, dz] of DIRS) {
-      const n = this.tile(x + dx, z + dz);
-      if (n?.road && n.connected && n[field]) return true;
-    }
-    const t = this.tile(x, z);
-    return Boolean(t?.[field]);
-  }
-
-  recomputeServices() {
-    for (const t of this.tiles) {
-      t.powered = false;
-      t.watered = false;
-      t.connected = false;
-    }
-
-    const q: number[] = [];
-    for (const t of this.tiles) {
-      if (t.road && t.highway) {
-        t.connected = true;
-        q.push(idx(t.x, t.z));
-      }
-    }
-    while (q.length) {
-      const i = q.pop()!;
-      const t = this.tiles[i]!;
-      for (const [dx, dz] of DIRS) {
-        const n = this.tile(t.x + dx, t.z + dz);
-        if (!n || !n.road || n.connected) continue;
-        n.connected = true;
-        q.push(idx(n.x, n.z));
-      }
-    }
-    this.connectedCity = this.tiles.some((t) => t.connected);
-
-    let powerSupply = 0;
-    let waterSupply = 0;
-    const bankrupt = this.money < 0;
-
-    const pq: number[] = [];
-    const wq: number[] = [];
-
-    for (const b of this.buildings) {
-      const d = this.def(b);
-      if (d.powerSupply && !bankrupt) {
-        powerSupply += d.powerSupply;
-        for (const [x, z] of this.cellsOf(b)) {
-          const t = this.tile(x, z);
-          if (t) t.powered = true;
-          for (const [dx, dz] of DIRS) {
-            const n = this.tile(x + dx, z + dz);
-            if (n?.road && n.connected && !n.powered) {
-              n.powered = true;
-              pq.push(idx(n.x, n.z));
-            }
-          }
-        }
-      }
-      if (d.waterSupply) {
-        waterSupply += d.waterSupply;
-        for (const [x, z] of this.cellsOf(b)) {
-          const t = this.tile(x, z);
-          if (t) t.watered = true;
-          for (const [dx, dz] of DIRS) {
-            const n = this.tile(x + dx, z + dz);
-            if (n?.road && n.connected && !n.watered) {
-              n.watered = true;
-              wq.push(idx(n.x, n.z));
-            }
-          }
-        }
-      }
-    }
-
-    for (const t of this.tiles) {
-      if (!t.road || !t.connected) continue;
-      for (const [dx, dz] of DIRS) {
-        const n = this.tile(t.x + dx, t.z + dz);
-        if (n?.terrain === "water") {
-          t.watered = true;
-          wq.push(idx(t.x, t.z));
-          waterSupply += 0.35;
-          break;
-        }
-      }
-    }
-
-    const flood = (queue: number[], field: "powered" | "watered") => {
-      let i = 0;
-      while (i < queue.length) {
-        const t = this.tiles[queue[i]!]!;
-        i++;
-        for (const [dx, dz] of DIRS) {
-          const n = this.tile(t.x + dx, t.z + dz);
-          if (!n || !n.road || !n.connected || n[field]) continue;
-          n[field] = true;
-          queue.push(idx(n.x, n.z));
-        }
-      }
-    };
-    flood(pq, "powered");
-    flood(wq, "watered");
-
-    for (const b of this.buildings) {
-      let p = false;
-      let w = false;
-      for (const [x, z] of this.cellsOf(b)) {
-        if (this.roadAccess(x, z)) {
-          for (const [dx, dz] of DIRS) {
-            const n = this.tile(x + dx, z + dz);
-            if (n?.road && n.powered) p = true;
-            if (n?.road && n.watered) w = true;
-          }
-        }
-        const t = this.tile(x, z);
-        if (t?.powered) p = true;
-        if (t?.watered) w = true;
-      }
-      for (const [x, z] of this.cellsOf(b)) {
-        const t = this.tile(x, z);
-        if (!t) continue;
-        t.powered = p;
-        t.watered = w;
-      }
-    }
-
-    let powerNeed = 0;
-    let waterNeed = 0;
-    for (const b of this.buildings) {
-      const d = this.def(b);
-      powerNeed += d.power;
-      waterNeed += d.water;
-    }
-    this.powerNeed = powerNeed;
-    this.powerSupply = powerSupply;
-    this.waterNeed = waterNeed;
-    this.waterSupply = waterSupply;
-    this.roadCount = this.tiles.reduce((n, t) => n + (t.road ? 1 : 0), 0);
-  }
-
-  private tickOccupancy() {
-    let pop = 0;
-    let jobs = 0;
-    let workers = 0;
-    let happy = 58;
-    let parks = 0;
-    let unpowered = 0;
-
-    for (const b of this.buildings) {
-      const d = this.def(b);
-      const t = this.tile(b.x, b.z);
-      const ok = Boolean(t?.powered && t.watered && this.roadAccess(b.x, b.z));
-      let target = ok ? 1 : 0.08;
-      if (d.zone === "R" && this.jobs + 4 < this.pop) target *= 0.55;
-      if ((d.zone === "C" || d.zone === "I") && this.workers + 4 < this.jobs) target *= 0.5;
-      if (this.money < 0 && d.kind === "power") target = 0;
-      const rate = ok ? 0.08 : 0.14;
-      b.occupancy += (target - b.occupancy) * rate;
-      b.occupancy = Math.max(0, Math.min(1, b.occupancy));
-      b.age += 1;
-      pop += d.residents * b.occupancy;
-      jobs += d.jobs * b.occupancy;
-      workers += d.residents * b.occupancy * 0.62;
-      happy += d.happiness * b.occupancy;
-      if (d.kind === "park") parks += 1;
-      if (!ok && (d.residents || d.jobs)) unpowered += 1;
-    }
-
-    const unemp = Math.max(0, workers - jobs);
-    happy -= unemp * 0.35;
-    happy -= unpowered * 1.8;
-    happy += Math.min(18, parks * 3);
-    this.pop = Math.round(pop);
-    this.jobs = Math.round(jobs);
-    this.workers = Math.round(workers);
-    this.happiness = Math.max(12, Math.min(98, happy));
-
-    const housing = this.buildings.reduce((s, b) => s + this.def(b).residents, 0);
-    const jobCap = this.buildings.reduce((s, b) => s + this.def(b).jobs, 0);
-    this.demandR = clamp01((jobCap * 0.9 - this.pop) / 40 + 0.25);
-    this.demandC = clamp01((this.pop * 0.35 - jobCap * 0.45) / 28 + 0.2);
-    this.demandI = clamp01((this.pop * 0.28 - jobCap * 0.4) / 24 + 0.15);
-    if (housing < 8) this.demandR = Math.max(this.demandR, 0.55);
-    if (this.pop > 20 && jobCap < 8) {
-      this.demandC = Math.max(this.demandC, 0.5);
-      this.demandI = Math.max(this.demandI, 0.4);
-    }
-  }
-
-  private tickGrowth() {
-    if (this.money < 0) return;
-    const empties: Tile[] = [];
-    for (const t of this.tiles) {
-      if (t.zone === "none" || t.building >= 0 || t.road) continue;
-      if (!this.lotServed(t.x, t.z, "powered") || !this.lotServed(t.x, t.z, "watered")) continue;
-      if (!this.roadAccess(t.x, t.z)) continue;
-      empties.push(t);
-    }
-    shuffle(empties, this.rand);
-    const maxSpawn = 5;
-    let spawned = 0;
-    for (const t of empties) {
-      if (spawned >= maxSpawn) break;
-      const demand = t.zone === "R" ? this.demandR : t.zone === "C" ? this.demandC : this.demandI;
-      if (demand < 0.06) continue;
-      if (this.rand() > 0.42 * Math.max(demand, 0.2)) continue;
-      const chain = GROWTH[t.zone];
-      const kind = chain[0];
-      if (!kind) continue;
-      this.spawnGrown(t.x, t.z, kind);
-      spawned += 1;
-    }
-    if (spawned) this.recomputeServices();
-
-    if (this.milestoneIndex < 2) return;
-    for (const b of this.buildings) {
-      const d = this.def(b);
-      if (d.zone === "none" || b.occupancy < 0.82 || b.age < 36) continue;
-      const chain = GROWTH[d.zone];
-      const next = chain[b.level];
-      if (!next) continue;
-      const need = d.zone === "R" ? this.demandR : d.zone === "C" ? this.demandC : this.demandI;
-      if (need < 0.22) continue;
-      if (this.milestoneIndex < 3 && b.level >= 2) continue;
-      if (this.rand() > 0.04 * need) continue;
-      b.kind = next;
-      b.level = DEFS[next].level;
-      b.age = 0;
-      b.occupancy = 0.55;
-      this.buildingsVersion++;
-    }
-  }
-
-  private spawnGrown(x: number, z: number, kind: BuildingKind) {
-    const d = DEFS[kind];
-    const b: Building = {
-      id: `b${this.nextId++}`,
-      kind,
-      zone: d.zone,
-      x,
-      z,
-      w: d.w,
-      d: d.d,
-      level: d.level,
-      occupancy: 0.18,
-      variant: Math.floor(hash2(x, z, this.seed) * 4),
-      age: 0,
-    };
-    const bi = this.buildings.length;
-    this.buildings.push(b);
-    const t = this.tile(x, z);
-    if (t) {
-      t.building = bi;
-      t.tree = false;
-    }
+  markBuildingsChanged() {
     this.buildingsVersion++;
-    this.treesVersion++;
   }
 
-  private tickAbandon() {
-    for (let i = this.buildings.length - 1; i >= 0; i--) {
-      const b = this.buildings[i]!;
-      const d = this.def(b);
-      if (d.cost > 0) continue;
-      if (b.occupancy > 0.04 || b.age < 40) continue;
-      const t = this.tile(b.x, b.z);
-      if (t?.powered && t.watered) continue;
-      this.removeBuildingAt(i, false);
+  markCatalogChanged() {
+    this.catalogVersion++;
+  }
+
+  markNetworkDirty() {
+    this.netDirty = true;
+    this.servicesDirty = true;
+    this.roadsVersion++;
+  }
+
+  // ------------------------------------------------------------------ herramientas
+
+  isUnlocked(kind: string): boolean {
+    const d = DEFS[kind];
+    if (!d) return false;
+    if (UNIQUE_KINDS.has(kind) && this.buildings.some((b) => b.kind === kind)) return false;
+    return this.tier >= d.tier;
+  }
+
+  roadClassOfTool(tool: Tool): number {
+    if (tool === "road-street") return ROAD.street;
+    if (tool === "road-avenue") return ROAD.avenue;
+    if (tool === "road-highway") return ROAD.highway;
+    return ROAD.none;
+  }
+
+  toolFootprint(tool: Tool): { w: number; d: number } {
+    if (tool.startsWith("build:")) {
+      const def = DEFS[tool.slice(6)];
+      if (def) return { w: def.w, d: def.d };
     }
+    return { w: 1, d: 1 };
   }
 
-  private resolveBudget() {
-    let income = 0;
-    let expense = this.roadCount * 0.35;
-    for (const b of this.buildings) {
-      const d = this.def(b);
-      income += d.residents * b.occupancy * 5.8;
-      income += d.jobs * b.occupancy * (d.zone === "C" ? 8.4 : 6.6);
-      expense += d.upkeep;
+  roadCost(cls: number, i: number): number {
+    const def = ROADS[cls]!;
+    const g = this.grid;
+    if (g.terrain[i] === TERRAIN.water) return def.bridgeCost;
+    // Desmonte: cuanto más empinado, más caro.
+    return Math.round(def.cost * (1 + g.slope[i]! * 2.4));
+  }
+
+  canPlace(tool: Tool, x: number, z: number): PlaceCheck {
+    const g = this.grid;
+    const fp = this.toolFootprint(tool);
+    const none = (reason: string, cost = 0): PlaceCheck => ({ ok: false, reason, cost, ...fp });
+    if (!inBounds(x, z)) return none("Fuera del mapa");
+    const i = idx(x, z);
+
+    if (tool === "select") return { ok: true, cost: 0, ...fp };
+
+    if (tool.startsWith("road-")) {
+      const cls = this.roadClassOfTool(tool);
+      const def = ROADS[cls]!;
+      if (this.tier < def.tier) return none(`Se desbloquea en ${TIERS[def.tier]!.name}`);
+      if (g.building[i]! >= 0) return none("Hay un edificio");
+      if (g.road[i] === cls) return none("Ya existe esa vía");
+      if (g.slope[i]! > 0.72 && g.terrain[i] !== TERRAIN.water) return none("Pendiente excesiva");
+      const cost = this.roadCost(cls, i);
+      if (this.money < cost) return none("Sin fondos", cost);
+      return { ok: true, cost, ...fp };
     }
-    income *= 0.35 + this.happiness / 200;
-    this.lastIncome = Math.round(income);
-    this.lastExpense = Math.round(expense);
-    this.money = Math.round(this.money + income - expense);
-    if (this.money < 0) this.pushNotice("broke", "Presupuesto en números rojos. Las centrales se apagarán.");
-  }
 
-  private checkMilestones() {
-    const next = MILESTONES[this.milestoneIndex + 1];
-    if (!next || this.pop < next.pop) return;
-    this.milestoneIndex += 1;
-    this.money += next.bonus;
-    this.pushNotice("mile", `${next.name}: la ciudad crece. Prima $${next.bonus.toLocaleString()}.`);
-  }
-
-  private maybeAdvice() {
-    if (this.tick % 18 !== 0) return;
-    if (!this.connectedCity) this.pushNotice("conn", "Las calles deben tocar la autovía oeste para abrir la ciudad.");
-    else if (this.powerSupply < 1 && this.buildings.length === 0)
-      this.pushNotice("pow", "Coloca una central y conéctala con calles.");
-    else if (this.pop > 12 && this.jobs < this.workers * 0.7)
-      this.pushNotice("jobs", "Falta empleo. Zona comercio o industria.");
-    else if (this.jobs > 16 && this.pop < this.jobs * 0.7)
-      this.pushNotice("homes", "Los negocios piden más vecinos cerca.");
-    else if (this.powerNeed > this.powerSupply)
-      this.pushNotice("blackout", "Falta luz. Construye otra central o reduce la demanda.");
-  }
-
-  private spawnTraffic() {
-    const cap = Math.min(42, 4 + Math.floor(this.pop / 10));
-    if (this.vehicles.length >= cap) return;
-    const homes: Building[] = [];
-    const work: Building[] = [];
-    for (const b of this.buildings) {
-      if (this.def(b).residents && b.occupancy > 0.3) homes.push(b);
-      if (this.def(b).jobs && b.occupancy > 0.3) work.push(b);
+    if (tool.startsWith("zone-")) {
+      const high = tool.endsWith("-high");
+      if (high && this.tier < 2) return none("La alta densidad llega con la Villa");
+      if (g.terrain[i] === TERRAIN.water) return none("Es agua");
+      if (g.road[i] !== ROAD.none) return none("Hay una vía");
+      if (g.slope[i]! > 0.55) return none("Terreno demasiado inclinado");
+      if (g.building[i]! >= 0) return none("Parcela ocupada");
+      return { ok: true, cost: 0, ...fp };
     }
-    if (!homes.length || !work.length) return;
-    const a = homes[Math.floor(this.rand() * homes.length)]!;
-    const c = work[Math.floor(this.rand() * work.length)]!;
-    const start = this.nearestRoad(a.x, a.z);
-    const end = this.nearestRoad(c.x, c.z);
-    if (start < 0 || end < 0 || start === end) return;
-    const path = this.bfsPath(start, end);
-    if (!path || path.length < 2) return;
-    const colors = [0xc45b4a, 0xe8e4dc, 0x3d6ea8, 0x2a2e33, 0xd4b46a, 0x4a8f6e];
-    this.vehicles.push({
-      id: this.nextVeh++,
-      x: 0,
-      z: 0,
-      y: 0,
-      yaw: 0,
-      path,
-      i: 0,
-      t: 0,
-      color: colors[Math.floor(this.rand() * colors.length)]!,
-      speed: 1.6 + this.rand() * 1.1,
-    });
-  }
 
-  private nearestRoad(x: number, z: number): number {
-    if (this.tile(x, z)?.road) return idx(x, z);
-    for (const [dx, dz] of DIRS) {
-      const t = this.tile(x + dx, z + dz);
-      if (t?.road) return idx(t.x, t.z);
-    }
-    return -1;
-  }
-
-  private bfsPath(start: number, goal: number): number[] | null {
-    const prev = new Int32Array(N * N).fill(-1);
-    const seen = new Uint8Array(N * N);
-    const q = [start];
-    seen[start] = 1;
-    let qi = 0;
-    while (qi < q.length) {
-      const cur = q[qi++]!;
-      if (cur === goal) break;
-      const t = this.tiles[cur]!;
-      for (const [dx, dz] of DIRS) {
-        const n = this.tile(t.x + dx, t.z + dz);
-        if (!n?.road) continue;
-        const ni = idx(n.x, n.z);
-        if (seen[ni]) continue;
-        seen[ni] = 1;
-        prev[ni] = cur;
-        q.push(ni);
-      }
-    }
-    if (!seen[goal]) return null;
-    const path: number[] = [];
-    let c = goal;
-    while (c !== start && c >= 0) {
-      path.push(c);
-      c = prev[c]!;
-    }
-    path.push(start);
-    path.reverse();
-    return path;
-  }
-
-  private tickVehicles(dt: number) {
-    const live: Vehicle[] = [];
-    for (const v of this.vehicles) {
-      if (dt === 0) {
-        this.placeVehicle(v);
-        live.push(v);
-        continue;
-      }
-      const a = v.path[v.i];
-      const b = v.path[v.i + 1];
-      if (a === undefined || b === undefined) continue;
-      const ta = this.tiles[a]!;
-      const tb = this.tiles[b]!;
-      const dist = Math.hypot(tb.x - ta.x, tb.z - ta.z) || 1;
-      v.t += (v.speed * dt) / dist;
-      while (v.t >= 1 && v.i < v.path.length - 2) {
-        v.t -= 1;
-        v.i += 1;
-      }
-      if (v.t >= 1 && v.i >= v.path.length - 2) continue;
-      this.placeVehicle(v);
-      live.push(v);
-    }
-    this.vehicles = live;
-  }
-
-  private placeVehicle(v: Vehicle) {
-    const a = this.tiles[v.path[v.i]!]!;
-    const b = this.tiles[v.path[Math.min(v.i + 1, v.path.length - 1)]!]!;
-    const t = Math.min(1, v.t);
-    v.x = a.x + 0.5 + (b.x - a.x) * t;
-    v.z = a.z + 0.5 + (b.z - a.z) * t;
-    v.y = Math.max(a.height, b.height) + 0.12;
-    v.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z));
-  }
-
-  canPlace(tool: Tool, x: number, z: number): { ok: boolean; reason?: string; cost: number } {
-    const t = this.tile(x, z);
-    if (!t) return { ok: false, reason: "Fuera del mapa", cost: 0 };
-    if (tool === "select") return { ok: true, cost: 0 };
-    if (tool === "road") {
-      if (t.building >= 0) return { ok: false, reason: "Ocupado", cost: 0 };
-      if (t.road) return { ok: false, reason: "Ya hay calle", cost: 0 };
-      const cost = t.terrain === "water" ? BRIDGE_COST : ROAD_COST;
-      if (this.money < cost) return { ok: false, reason: "Sin fondos", cost };
-      return { ok: true, cost };
-    }
-    if (tool === "zone-r" || tool === "zone-c" || tool === "zone-i") {
-      if (t.terrain === "water" || t.road || t.building >= 0)
-        return { ok: false, reason: "No se puede zonificar", cost: 0 };
-      return { ok: true, cost: 0 };
-    }
     if (tool === "bulldoze") {
-      if (!t.road && t.zone === "none" && t.building < 0 && !t.tree)
-        return { ok: false, reason: "Nada que demoler", cost: 0 };
-      const cost = t.building >= 0 ? BULLDOZE_BUILDING : t.road ? BULLDOZE_ROAD : 5;
-      if (this.money < cost) return { ok: false, reason: "Sin fondos", cost };
-      return { ok: true, cost };
+      const hasSomething =
+        g.road[i] !== ROAD.none || g.zone[i] !== 0 || g.building[i]! >= 0 || g.tree[i] === 1;
+      if (!hasSomething) return none("Nada que demoler");
+      if (g.road[i] === ROAD.highway) return none("La autovía no se toca");
+      const cost =
+        g.building[i]! >= 0 ? BULLDOZE_BUILDING : g.road[i] !== ROAD.none ? BULLDOZE_ROAD : BULLDOZE_ZONE;
+      if (this.money < cost) return none("Sin fondos", cost);
+      return { ok: true, cost, ...fp };
     }
-    if (tool === "power" || tool === "water" || tool === "park") {
-      const kind: BuildingKind = tool === "power" ? "power" : tool === "water" ? "water-tower" : "park";
-      const d = DEFS[kind];
-      if (this.money < d.cost) return { ok: false, reason: "Sin fondos", cost: d.cost };
-      for (let zz = 0; zz < d.d; zz++) {
-        for (let xx = 0; xx < d.w; xx++) {
-          const c = this.tile(x + xx, z + zz);
-          if (!c) return { ok: false, reason: "Falta espacio", cost: d.cost };
-          if (c.terrain === "water" || c.road || c.building >= 0)
-            return { ok: false, reason: "Parcela ocupada", cost: d.cost };
+
+    if (tool.startsWith("build:")) {
+      const kind = tool.slice(6);
+      const def = DEFS[kind];
+      if (!def) return none("Desconocido");
+      if (this.tier < def.tier) return none(`Se desbloquea en ${TIERS[def.tier]!.name}`);
+      if (UNIQUE_KINDS.has(kind) && this.buildings.some((b) => b.kind === kind))
+        return none("Solo puede haber uno");
+      if (this.money < def.cost) return none("Sin fondos", def.cost);
+      let touchesWater = false;
+      for (let zz = 0; zz < def.d; zz++) {
+        for (let xx = 0; xx < def.w; xx++) {
+          const j = g.at(x + xx, z + zz);
+          if (j < 0) return none("Falta espacio", def.cost);
+          if (g.terrain[j] === TERRAIN.water) return none("Sobre el agua no", def.cost);
+          if (g.road[j] !== ROAD.none) return none("Hay una vía", def.cost);
+          if (g.building[j]! >= 0) return none("Parcela ocupada", def.cost);
+          if (g.slope[j]! > 0.5) return none("Terreno demasiado inclinado", def.cost);
+          for (const [dx, dz] of DIRS) {
+            const k = g.at(x + xx + dx, z + zz + dz);
+            if (k >= 0 && g.terrain[k] === TERRAIN.water) touchesWater = true;
+          }
         }
       }
-      return { ok: true, cost: d.cost };
+      if (kind === "water_pump" && !touchesWater) return none("Debe tocar el río o la costa", def.cost);
+      return { ok: true, cost: def.cost, ...fp };
     }
-    return { ok: false, cost: 0 };
+
+    return none("Herramienta desconocida");
   }
 
   applyTool(tool: Tool, x: number, z: number): boolean {
     const check = this.canPlace(tool, x, z);
     if (!check.ok) return false;
-    const t = this.tile(x, z)!;
+    const g = this.grid;
+    const i = idx(x, z);
 
-    if (tool === "road") {
-      t.road = true;
-      t.tree = false;
-      t.zone = "none";
+    if (tool.startsWith("road-")) {
+      const cls = this.roadClassOfTool(tool);
+      if (g.building[i]! >= 0) return false;
+      g.road[i] = cls;
+      g.zone[i] = 0;
+      g.tree[i] = 0;
       this.money -= check.cost;
-      this.roadsVersion++;
+      this.markNetworkDirty();
       this.treesVersion++;
-      this.recomputeServices();
+      this.zonesVersion++;
       return true;
     }
-    if (tool === "zone-r" || tool === "zone-c" || tool === "zone-i") {
-      t.zone = tool === "zone-r" ? "R" : tool === "zone-c" ? "C" : "I";
-      t.tree = false;
+
+    if (tool.startsWith("zone-")) {
+      const zone: Zone = tool.includes("-r") ? "R" : tool.includes("-c") ? "C" : "I";
+      const high = tool.endsWith("-high") ? 1 : 0;
+      const nextZone = ZONE_ID[zone];
+      if (g.zone[i] === nextZone && g.density[i] === high) return false;
+      g.zone[i] = nextZone;
+      g.density[i] = high;
+      g.tree[i] = 0;
       this.treesVersion++;
-      this.buildingsVersion++;
+      this.zonesVersion++;
+      this.servicesDirty = true;
       return true;
     }
+
     if (tool === "bulldoze") {
-      if (t.building >= 0) this.removeBuildingCovering(x, z);
-      t.road = false;
-      t.highway = false;
-      t.zone = "none";
-      t.tree = false;
-      this.money -= check.cost;
-      this.roadsVersion++;
-      this.treesVersion++;
-      this.buildingsVersion++;
-      this.recomputeServices();
-      return true;
-    }
-    if (tool === "power" || tool === "water" || tool === "park") {
-      const kind: BuildingKind = tool === "power" ? "power" : tool === "water" ? "water-tower" : "park";
-      const d = DEFS[kind];
-      const b: Building = {
-        id: `b${this.nextId++}`,
-        kind,
-        zone: "none",
-        x,
-        z,
-        w: d.w,
-        d: d.d,
-        level: 1,
-        occupancy: 1,
-        variant: 0,
-        age: 0,
-      };
-      const bi = this.buildings.length;
-      this.buildings.push(b);
-      for (const [cx, cz] of this.cellsOf(b)) {
-        const c = this.tile(cx, cz);
-        if (!c) continue;
-        c.building = bi;
-        c.tree = false;
-        c.zone = "none";
+      if (g.building[i]! >= 0) {
+        const bi = g.building[i]!;
+        const b = this.buildings[bi];
+        if (b && b.kind === "city_hall") this.hasCityHall = false;
+        removeBuilding(this, bi);
       }
-      this.money -= d.cost;
-      this.buildingsVersion++;
+      g.road[i] = ROAD.none;
+      g.zone[i] = 0;
+      g.density[i] = 0;
+      g.tree[i] = 0;
+      this.money -= check.cost;
+      this.markNetworkDirty();
       this.treesVersion++;
-      this.recomputeServices();
+      this.zonesVersion++;
       return true;
     }
+
+    if (tool.startsWith("build:")) {
+      const kind = tool.slice(6);
+      const index = spawnBuilding(this, x, z, kind);
+      if (index === null) return false;
+      this.money -= check.cost;
+      if (kind === "city_hall") this.hasCityHall = true;
+      this.servicesDirty = true;
+      this.treesVersion++;
+      return true;
+    }
+
     return false;
   }
 
-  private removeBuildingCovering(x: number, z: number) {
-    const t = this.tile(x, z);
-    if (!t || t.building < 0) return;
-    this.removeBuildingAt(t.building, false);
-  }
+  // ------------------------------------------------------------------ consulta
 
-  private removeBuildingAt(index: number, refund: boolean) {
-    const b = this.buildings[index];
-    if (!b) return;
-    if (refund) this.money += Math.round(this.def(b).cost * 0.2);
-    for (const [x, z] of this.cellsOf(b)) {
-      const t = this.tile(x, z);
-      if (t && t.building === index) t.building = -1;
-    }
-    const last = this.buildings.length - 1;
-    if (index !== last) {
-      const moved = this.buildings[last]!;
-      this.buildings[index] = moved;
-      for (const [x, z] of this.cellsOf(moved)) {
-        const t = this.tile(x, z);
-        if (t) t.building = index;
-      }
-    }
-    this.buildings.pop();
-    this.buildingsVersion++;
+  buildingAt(x: number, z: number): Building | null {
+    const i = this.grid.at(x, z);
+    if (i < 0) return null;
+    const bi = this.grid.building[i]!;
+    return bi >= 0 ? (this.buildings[bi] ?? null) : null;
   }
 
   inspect(x: number, z: number) {
-    const t = this.tile(x, z);
-    if (!t) return null;
-    const b = t.building >= 0 ? this.buildings[t.building] : null;
-    const d = b ? this.def(b) : null;
+    const g = this.grid;
+    const i = g.at(x, z);
+    if (i < 0) return null;
+    const b = this.buildingAt(x, z);
+    const def = b ? DEFS[b.kind]! : null;
     return {
       x,
       z,
-      terrain: t.terrain,
-      road: t.road,
-      zone: t.zone,
-      tree: t.tree,
-      powered: t.powered,
-      watered: t.watered,
-      connected: t.connected || this.roadAccess(x, z),
-      height: t.height,
+      terrain: g.terrain[i]!,
+      height: g.height[i]!,
+      slope: g.slope[i]!,
+      road: g.road[i]!,
+      zone: g.zoneOf(i),
+      density: g.density[i] ? ("high" as const) : ("low" as const),
+      tree: g.tree[i] === 1,
+      connected: g.roadDist[i]! <= ZONE_DEPTH,
+      roadDist: g.roadDist[i]!,
+      powered: g.powered[i] === 1,
+      watered: g.watered[i] === 1,
+      landValue: g.landValue[i]!,
+      pollution: g.pollution[i]!,
+      noise: g.noise[i]!,
+      traffic: g.traffic[i]!,
+      services: Object.fromEntries(SERVICES.map((k) => [k, g.service[k]![i]!])) as Record<string, number>,
       building: b
         ? {
-            name: d!.name,
+            id: b.id,
+            name: def!.name,
             kind: b.kind,
+            category: def!.category,
+            desc: def!.desc,
             level: b.level,
+            size: `${b.w}×${b.d}`,
             occupancy: b.occupancy,
-            residents: Math.round(d!.residents * b.occupancy),
-            jobs: Math.round(d!.jobs * b.occupancy),
+            wellbeing: b.wellbeing,
+            residents: Math.round(def!.homes * b.occupancy * 2.5),
+            jobs: Math.round(def!.jobs * b.occupancy),
+            upkeep: def!.upkeep,
+            trips: b.trips,
+            hooked: isHooked(this, b.x, b.z, b.w, b.d),
           }
         : null,
     };
   }
 
-  pushNotice(key: string, text: string) {
-    const last = this.noticeCooldown.get(key) ?? -999;
-    if (this.tick - last < 40 && key !== "welcome" && key !== "mile" && key !== "loaded") return;
-    this.noticeCooldown.set(key, this.tick);
+  pushNotice(key: string, text: string, kind: Notice["kind"] = "info") {
+    const last = this.noticeCooldown.get(key) ?? -99999;
+    if (this.tickCount - last < TICKS_PER_DAY * 2 && key !== "welcome") return;
+    this.noticeCooldown.set(key, this.tickCount);
     this.notices = this.notices.filter((n) => n.text !== text);
-    this.notices.unshift({ id: `n${noticeSeq++}`, text, at: this.tick });
-    if (this.notices.length > 4) this.notices.length = 4;
+    this.notices.unshift({ id: `n${noticeSeq++}`, text, kind, at: this.tickCount });
+    if (this.notices.length > 5) this.notices.length = 5;
   }
 
-  rebuildSnapshotCache() {
-    /* occupancy already computed */
+  private advise() {
+    if (!this.connectedCity) {
+      this.pushNotice("conn", "Ninguna calle llega a la autovía: la ciudad está aislada.", "warn");
+      return;
+    }
+    if (this.powerRatio < 0.95 && this.powerNeed > 0)
+      this.pushNotice("power", "Falta potencia eléctrica: apagones parciales en toda la ciudad.", "warn");
+    else if (this.waterRatio < 0.95 && this.waterNeed > 0)
+      this.pushNotice("water", "El agua no llega a todos: amplía el suministro.", "warn");
+    else if (this.garbageRatio < 0.9)
+      this.pushNotice("garbage", "La basura se acumula. Hace falta más capacidad de tratamiento.", "warn");
+    else if (this.pop > 80 && (this.serviceLevel.education ?? 0) < 0.25)
+      this.pushNotice("edu", "Sin colegios no habrá trabajadores cualificados para oficinas.", "info");
+    else if (this.pop > 120 && (this.serviceLevel.health ?? 0) < 0.25)
+      this.pushNotice("health", "La ciudad no tiene sanidad.", "info");
+    else if (this.congestion > 0.55)
+      this.pushNotice("jam", "Atascos serios: prueba con avenidas o rutas alternativas.", "warn");
+    else if (this.unemployment > 0.25 && this.pop > 60)
+      this.pushNotice("unemp", "Paro alto: falta empleo comercial o industrial.", "warn");
+    else if (this.avgPollution > 0.4)
+      this.pushNotice("pollution", "El aire está muy contaminado. Aleja la industria o límpiala.", "warn");
   }
+
+  // ------------------------------------------------------------------ snapshot
 
   snapshot(): Snapshot {
+    const tier = TIERS[this.tier]!;
+    const next = TIERS[this.tier + 1] ?? null;
     return {
       name: this.name,
       seed: this.seed,
       day: this.day,
       hour: this.hour,
+      dayFraction: this.dayFraction,
+      paused: this.paused,
+      speed: this.speed,
+
       money: this.money,
+      debt: Math.round(this.debt),
+      income: this.lastIncome,
+      expense: this.lastExpense,
+      incomeLines: this.incomeLines,
+      expenseLines: this.expenseLines,
+      taxR: this.taxR,
+      taxC: this.taxC,
+      taxI: this.taxI,
+
       pop: this.pop,
-      jobs: this.jobs,
+      households: this.households,
+      homesCapacity: this.homesCapacity,
       workers: this.workers,
+      jobs: this.jobs,
+      unemployment: this.unemployment,
+      education: this.eduLevel,
+      health: this.healthLevel,
+      safety: this.safetyLevel,
+
       happiness: Math.round(this.happiness),
+      landValue: this.avgLandValue,
+      pollution: this.avgPollution,
+      noise: this.avgNoise,
+      garbageBacklog: Math.round(this.garbageBacklog),
+      congestion: this.congestion,
+
       demandR: this.demandR,
       demandC: this.demandC,
       demandI: this.demandI,
-      income: this.lastIncome,
-      expense: this.lastExpense,
-      powerNeed: this.powerNeed,
-      powerSupply: this.powerSupply,
-      waterNeed: this.waterNeed,
+
+      powerNeed: Math.round(this.powerNeed),
+      powerSupply: Math.round(this.powerSupply),
+      waterNeed: Math.round(this.waterNeed),
       waterSupply: Math.round(this.waterSupply),
+      garbageNeed: Math.round(this.garbageNeed),
+      garbageCapacity: Math.round(this.garbageCapacity),
+
       buildings: this.buildings.length,
       roads: this.roadCount,
       connected: this.connectedCity,
-      milestone: MILESTONES[this.milestoneIndex]?.name ?? "Aldea",
-      notices: this.notices.slice(0, 3),
+
+      tier: this.tier,
+      tierName: tier.name,
+      nextTierName: next?.name ?? null,
+      nextTierPop: next?.pop ?? null,
+      unlocked: TIERS.slice(0, this.tier + 1).flatMap((t) => t.unlocks),
+
+      notices: this.notices.slice(0, 4),
       bankrupt: this.money < 0,
+      history: this.history,
     };
   }
+
+  // ------------------------------------------------------------------ guardado
+
+  toSave(): SaveBlob {
+    return {
+      version: 2,
+      seed: this.seed,
+      name: this.name,
+      entry: this.entry,
+      day: this.day,
+      tick: this.tickCount,
+      money: this.money,
+      debt: this.debt,
+      taxR: this.taxR,
+      taxC: this.taxC,
+      taxI: this.taxI,
+      tier: this.tier,
+      garbageBacklog: this.garbageBacklog,
+      eduLevel: this.eduLevel,
+      nextBuildingId: this.nextBuildingId,
+      grid: this.grid.serialize(),
+      buildings: this.buildings.map((b) => ({
+        id: b.id,
+        kind: b.kind,
+        x: b.x,
+        z: b.z,
+        rot: b.rot,
+        variant: b.variant,
+        occupancy: Number(b.occupancy.toFixed(3)),
+        age: b.age,
+        wellbeing: Number(b.wellbeing.toFixed(3)),
+      })),
+      history: this.history,
+    };
+  }
+
+  persist(): boolean {
+    return writeSave(this.toSave());
+  }
+
+  static fromSave(blob: SaveBlob): CitySim | null {
+    if (blob.version !== 2) return null;
+    const grid = Grid.deserialize(blob.grid);
+    if (!grid) return null;
+    const sim = Object.create(CitySim.prototype) as CitySim;
+    Object.assign(sim, new CitySimDefaults());
+    sim.seed = blob.seed;
+    sim.name = blob.name;
+    sim.entry = blob.entry ?? { x: 8, z: 32 };
+    sim.grid = grid;
+    sim.rand = mulberry32(blob.seed + blob.tick);
+    sim.day = blob.day;
+    sim.tickCount = blob.tick;
+    sim.money = blob.money;
+    sim.debt = blob.debt ?? 0;
+    sim.taxR = blob.taxR ?? 0.11;
+    sim.taxC = blob.taxC ?? 0.11;
+    sim.taxI = blob.taxI ?? 0.11;
+    sim.tier = blob.tier ?? 0;
+    sim.garbageBacklog = blob.garbageBacklog ?? 0;
+    sim.eduLevel = blob.eduLevel ?? 0.1;
+    sim.nextBuildingId = blob.nextBuildingId ?? 1;
+    sim.history = blob.history ?? [];
+    const a = (blob.seed % 360) * (Math.PI / 180);
+    sim.windX = Math.cos(a) * 0.9;
+    sim.windZ = Math.sin(a) * 0.9;
+
+    sim.buildings = blob.buildings.map((b) => {
+      const def = DEFS[b.kind] ?? DEFS.r_low_1!;
+      return {
+        id: b.id,
+        kind: DEFS[b.kind] ? b.kind : "r_low_1",
+        zone: def.zone,
+        x: b.x,
+        z: b.z,
+        w: def.w,
+        d: def.d,
+        rot: b.rot ?? 0,
+        level: def.level,
+        variant: b.variant ?? 0,
+        occupancy: b.occupancy ?? 0.5,
+        age: b.age ?? 200,
+        wellbeing: b.wellbeing ?? 0.4,
+        trips: 0,
+      } satisfies Building;
+    });
+    // El índice tile→edificio se reconstruye: nunca se guarda un índice de array.
+    sim.grid.building.fill(-1);
+    for (let k = 0; k < sim.buildings.length; k++) {
+      const b = sim.buildings[k]!;
+      for (let zz = 0; zz < b.d; zz++) {
+        for (let xx = 0; xx < b.w; xx++) {
+          const i = sim.grid.at(b.x + xx, b.z + zz);
+          if (i >= 0) sim.grid.building[i] = k;
+        }
+      }
+    }
+    const t = sim.tickCount % TICKS_PER_DAY;
+    sim.dayFraction = t / TICKS_PER_DAY;
+    sim.hour = sim.dayFraction * 24;
+    for (const k of SERVICES) sim.serviceLevel[k] = 0;
+    sim.refreshAll();
+    for (const b of sim.buildings) b.rot = b.rot || facingRoad(sim.grid, b.x, b.z, b.w, b.d);
+    sim.pushNotice("loaded", "Ciudad restaurada.", "good");
+    return sim;
+  }
+}
+
+/** Valores por defecto para reconstruir una instancia sin pasar por el constructor. */
+class CitySimDefaults {
+  buildings: Building[] = [];
+  vehicles: Vehicle[] = [];
+  routes: Int32Array[] = [];
+  acc = 0;
+  speed = 1;
+  paused = false;
+  lastIncome = 0;
+  lastExpense = 0;
+  incomeLines: BudgetLine[] = [];
+  expenseLines: BudgetLine[] = [];
+  history: HistoryPoint[] = [];
+  pop = 0;
+  households = 0;
+  homesCapacity = 0;
+  workers = 0;
+  jobs = 0;
+  unemployment = 0;
+  healthLevel = 0.2;
+  safetyLevel = 0.2;
+  happiness = 55;
+  avgWellbeing = 0.4;
+  occupancyR = 0;
+  occupancyC = 0;
+  occupancyI = 0;
+  jobFill = [1, 1, 1];
+  avgPollution = 0;
+  avgNoise = 0;
+  avgLandValue = 0.3;
+  congestion = 0;
+  powerNeed = 0;
+  powerSupply = 0;
+  powerRatio = 1;
+  waterNeed = 0;
+  waterSupply = 0;
+  waterRatio = 1;
+  garbageNeed = 0;
+  garbageCapacity = 0;
+  garbageRatio = 1;
+  serviceLevel: Record<string, number> = {};
+  demandR = 0.6;
+  demandC = 0.2;
+  demandI = 0.2;
+  hasCityHall = false;
+  roadCount = 0;
+  connectedCity = false;
+  notices: Notice[] = [];
+  noticeCooldown = new Map<string, number>();
+  tool: Tool = "select";
+  overlay: OverlayKind = "none";
+  hover: { x: number; z: number } | null = null;
+  selected: { x: number; z: number } | null = null;
+  buildingsVersion = 1;
+  roadsVersion = 1;
+  zonesVersion = 1;
+  treesVersion = 1;
+  terrainVersion = 1;
+  fieldsVersion = 1;
+  catalogVersion = 1;
+  nextBuildingId = 1;
+  nextVehicleId = 1;
+  vehicleBudget = 140;
 }
 
 export function loadOrNull(): CitySim | null {
@@ -850,60 +784,93 @@ export function loadOrNull(): CitySim | null {
   }
 }
 
-function clamp01(n: number) {
-  return Math.max(0, Math.min(1, n));
-}
-
-function shuffle<T>(arr: T[], rand: () => number) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    [arr[i], arr[j]] = [arr[j]!, arr[i]!];
-  }
-}
-
 export function zoneFromTool(tool: Tool): Zone {
-  if (tool === "zone-r") return "R";
-  if (tool === "zone-c") return "C";
-  if (tool === "zone-i") return "I";
+  if (tool.includes("-r")) return "R";
+  if (tool.includes("-c")) return "C";
+  if (tool.includes("-i")) return "I";
   return "none";
 }
 
+/** Ciudad de fondo para la portada: se construye sola y se deja bonita. */
 export function createPreview(): CitySim {
   const s = new CitySim(20260828);
-  const tryPaint = (tool: Tool, x: number, z: number) => {
-    s.money = START_MONEY;
-    s.applyTool(tool, x, z);
+  // La portada enseña una ciudad ya madura: todo desbloqueado desde el principio.
+  s.tier = 3;
+  s.money = 900000;
+  const { x: ex, z: ez } = s.entry;
+  const free = () => {
+    s.money = 900000;
   };
-  for (let x = 0; x <= 22; x++) {
-    tryPaint("road", x, 16);
-    tryPaint("road", x, 17);
-  }
-  for (let z = 9; z <= 26; z++) {
-    tryPaint("road", 8, z);
-    tryPaint("road", 14, z);
-    tryPaint("road", 20, z);
-  }
-  tryPaint("power", 6, 14);
-  tryPaint("water", 10, 15);
-  tryPaint("park", 11, 19);
-  tryPaint("park", 17, 21);
-  for (let x = 9; x <= 13; x++) {
-    for (let z = 18; z <= 22; z++) tryPaint("zone-r", x, z);
-  }
-  for (let x = 15; x <= 19; x++) {
-    for (let z = 18; z <= 21; z++) tryPaint("zone-c", x, z);
-  }
-  for (let x = 9; x <= 13; x++) {
-    for (let z = 10; z <= 14; z++) tryPaint("zone-i", x, z);
-  }
-  s.money = START_MONEY;
+  const road = (x: number, z: number, avenue = false) => {
+    free();
+    s.applyTool(avenue ? "road-avenue" : "road-street", x, z);
+  };
+
+  const x0 = ex;
+  const x1 = Math.min(N - 3, ex + 30);
+  const z0 = Math.max(2, ez - 13);
+  const z1 = Math.min(N - 3, ez + 13);
+  // Avenida principal desde la autovía y retícula de calles cada cinco casillas.
+  for (let x = x0; x <= x1; x++) road(x, ez, true);
+  for (let x = x0 + 3; x <= x1; x += 5) for (let z = z0; z <= z1; z++) road(x, z);
+  for (let z = z0; z <= z1; z += 5) for (let x = x0; x <= x1; x++) road(x, z);
+
+  s.refreshAll();
+
+  const zoneRect = (tool: Tool, ax: number, az: number, bx: number, bz: number) => {
+    for (let x = ax; x <= bx; x++) {
+      for (let z = az; z <= bz; z++) {
+        free();
+        s.applyTool(tool, x, z);
+      }
+    }
+  };
+  // Centro denso junto a la avenida, barrios bajos fuera, industria al fondo.
+  zoneRect("zone-c-high", x0 + 4, ez - 4, x0 + 17, ez - 1);
+  zoneRect("zone-c-high", x0 + 4, ez + 1, x0 + 12, ez + 4);
+  zoneRect("zone-r-high", x0 + 13, ez + 1, x0 + 22, ez + 4);
+  zoneRect("zone-r", x0 + 1, z0 + 1, x0 + 22, ez - 6);
+  zoneRect("zone-r", x0 + 1, ez + 6, x0 + 17, z1 - 1);
+  zoneRect("zone-i", x0 + 19, ez + 6, x1 - 1, z1 - 1);
+  zoneRect("zone-i", x0 + 24, z0 + 1, x1 - 1, ez - 6);
+
+  const place = (kind: string, cx: number, cz: number) => {
+    for (let r = 0; r < 14; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          free();
+          if (s.canPlace(`build:${kind}`, cx + dx, cz + dz).ok) {
+            const i = s.grid.at(cx + dx, cz + dz);
+            if (i >= 0 && s.grid.roadDist[i]! <= ZONE_DEPTH) {
+              return s.applyTool(`build:${kind}`, cx + dx, cz + dz);
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+  place("power_coal", x1 - 3, z1 - 3);
+  place("water_tower", x0 + 2, ez - 8);
+  place("landfill", x1 - 3, z0 + 3);
+  place("school", x0 + 8, ez - 8);
+  place("clinic", x0 + 14, ez - 8);
+  place("police", x0 + 8, ez + 8);
+  place("park_plaza", x0 + 10, ez - 2);
+  place("park_plaza", x0 + 18, ez + 3);
+  place("city_hall", x0 + 6, ez + 2);
+
+  free();
+  s.refreshAll();
   s.paused = false;
   s.speed = 3;
-  for (let i = 0; i < 40; i++) s.step(0.25);
-  s.paused = true;
-  s.speed = 1;
-  s.money = START_MONEY;
+  // Suficiente para que la ciudad se llene sin bloquear la carga de la página.
+  for (let i = 0; i < 220; i++) s.step(0.12);
+  s.money = 900000;
   s.notices = [];
+  s.speed = 1;
   return s;
 }
 
+export { clamp01, N, idx, inBounds };
