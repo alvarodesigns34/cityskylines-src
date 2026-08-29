@@ -165,18 +165,18 @@ export const PALETTES: Record<string, Palette> = {
 
 /** Colores del terreno y del entorno. */
 export const TERRAIN_COLORS = {
-  grassLow: [0.33, 0.46, 0.24] as const,
-  grassHigh: [0.42, 0.5, 0.29] as const,
-  grassDry: [0.52, 0.52, 0.31] as const,
-  sand: [0.79, 0.71, 0.55] as const,
-  rock: [0.44, 0.42, 0.4] as const,
-  cliff: [0.36, 0.34, 0.32] as const,
-  snow: [0.86, 0.87, 0.88] as const,
+  grassLow: [0.30, 0.48, 0.20] as const,
+  grassHigh: [0.40, 0.54, 0.26] as const,
+  grassDry: [0.54, 0.51, 0.29] as const,
+  sand: [0.82, 0.73, 0.54] as const,
+  rock: [0.46, 0.44, 0.41] as const,
+  cliff: [0.38, 0.36, 0.33] as const,
+  snow: [0.88, 0.89, 0.90] as const,
 };
 
-export const ASPHALT = 0x33373d;
-export const ASPHALT_WORN = 0x3d424a;
-export const SIDEWALK = 0x9a978f;
-export const CURB = 0x807d76;
-export const MARKING = 0xd8d2be;
-export const MARKING_WARM = 0xd8b455;
+export const ASPHALT = 0x2e3238;
+export const ASPHALT_WORN = 0x3a3f46;
+export const SIDEWALK = 0xa39f96;
+export const CURB = 0x8a867e;
+export const MARKING = 0xe2dcc6;
+export const MARKING_WARM = 0xe0bc4a;

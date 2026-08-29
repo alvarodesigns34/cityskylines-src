@@ -93,13 +93,18 @@ function facade(o: FacadeOpts) {
     }
     const cols = Math.max(1, Math.round(wallW / 0.58));
     const winW = Math.min(0.26, (wallW * 0.62) / cols);
+    const shutters = o.style === "grid" && o.floors <= 3 && wallW < 2.2;
     for (let c = 0; c < cols; c++) {
       const u = -wallW / 2 + (wallW / cols) * (c + 0.5);
       const seed = f * 13 + c * 7;
       const lit = ctx.rnd(seed) > 0.45 ? 0.5 + ctx.rnd(seed + 1) * 0.5 : 0.05;
       put(u, y, winW, o.floorH * 0.34, glass, lit);
-      // Dintel claro sobre cada hueco.
       put(u, y + o.floorH * 0.22, winW * 1.24, o.floorH * 0.05, ctx.p.trim, 0, t * 0.6);
+      put(u, y - o.floorH * 0.2, winW * 1.18, o.floorH * 0.04, shade(ctx.p.trim, -0.08), 0, t * 0.5);
+      if (shutters) {
+        put(u - winW * 0.72, y, winW * 0.26, o.floorH * 0.32, ctx.p.accent, 0, t * 0.7);
+        put(u + winW * 0.72, y, winW * 0.26, o.floorH * 0.32, ctx.p.accent, 0, t * 0.7);
+      }
     }
   }
 }
@@ -159,23 +164,33 @@ function house(ctx: Ctx): Part[] {
 
   const roofY = bodyH + 0.06;
   if (roofKind === "gable") {
-    out.push({ g: "gable", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.22, sy: 0.42 + ctx.rnd(3) * 0.22, sz: hd * 2 + 0.22, color: ctx.p.roof, ry: ctx.rnd(4) > 0.5 ? Math.PI / 2 : 0 });
+    out.push({ g: "gable", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.34, sy: 0.46 + ctx.rnd(3) * 0.22, sz: hd * 2 + 0.28, color: ctx.p.roof, ry: ctx.rnd(4) > 0.5 ? Math.PI / 2 : 0 });
   } else if (roofKind === "hip") {
-    out.push({ g: "hip", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.2, sy: 0.36 + ctx.rnd(3) * 0.16, sz: hd * 2 + 0.2, color: ctx.p.roof });
+    out.push({ g: "hip", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.3, sy: 0.4 + ctx.rnd(3) * 0.16, sz: hd * 2 + 0.28, color: ctx.p.roof });
   } else {
-    out.push(box(0, roofY + 0.05, 0, hw * 2 + 0.16, 0.1, hd * 2 + 0.16, ctx.p.roof));
+    out.push(box(0, roofY + 0.05, 0, hw * 2 + 0.2, 0.1, hd * 2 + 0.2, ctx.p.roof));
   }
-  // Chimenea, puerta y seto.
-  out.push(box(hw * (ctx.rnd(6) - 0.5), roofY + 0.32, -hd * 0.3, 0.11, 0.4, 0.11, shade(ctx.p.roof, -0.08)));
+  out.push(box(hw * (ctx.rnd(6) - 0.5), roofY + 0.36, -hd * 0.3, 0.12, 0.44, 0.12, shade(ctx.p.roof, -0.08)));
   out.push(box(0, 0.06 + fh * 0.34, -hd - 0.02, 0.2, fh * 0.62, 0.05, ctx.p.accent));
   const hedge = 0.9;
-  out.push(box(0, 0.11, -ctx.d / 2 + 0.08, ctx.w * hedge, 0.14, 0.09, 0x4a7a44));
-  // Anejo: garaje o porche en algunas variantes, para que la hilera no sea un sello.
-  if (ctx.rnd(12) > 0.42 && ctx.w >= 1) {
+  out.push(box(0, 0.12, -ctx.d / 2 + 0.08, ctx.w * hedge, 0.16, 0.1, 0x3d7a38));
+  out.push(box(0, 0.045, -ctx.d / 2 + 0.2, 0.18, 0.03, 0.32, 0x9a9080));
+  if (ctx.rnd(16) > 0.35) {
+    out.push(box(hw * 0.45, 0.08 + fh * 0.18, -hd - 0.05, 0.22, 0.05, 0.06, 0x6b5344));
+    out.push(box(hw * 0.45, 0.12 + fh * 0.18, -hd - 0.05, 0.2, 0.05, 0.05, 0x3f8a40));
+  }
+  if (roofKind === "gable" && ctx.rnd(17) > 0.42) {
+    const dx = (ctx.rnd(18) - 0.5) * hw * 0.7;
+    out.push(box(dx, roofY + 0.2, -hd * 0.12, 0.24, 0.3, 0.3, ctx.wall));
+    out.push(box(dx, roofY + 0.22, -hd * 0.28, 0.12, 0.14, 0.04, ctx.p.window, { emis: 0.45 }));
+    out.push({ g: "gable", x: dx, y: roofY + 0.35, z: -hd * 0.12, sx: 0.28, sy: 0.16, sz: 0.34, color: ctx.p.roof });
+  }
+  if (ctx.rnd(12) > 0.38 && ctx.w >= 1) {
     const gx = hw + 0.18;
     const gh = fh * (0.55 + ctx.rnd(13) * 0.25);
     out.push(box(gx, gh / 2 + 0.06, 0.05, 0.34, gh, hd * 1.15, shade(ctx.wall, -0.05)));
     out.push(box(gx, 0.06 + gh * 0.42, -hd * 0.55, 0.26, gh * 0.7, 0.04, 0x3a3f46));
+    out.push(box(gx, gh + 0.1, 0.05, 0.38, 0.08, hd * 1.2, ctx.p.roof));
   }
   return out;
 }
@@ -226,9 +241,14 @@ function blockShape(ctx: Ctx): Part[] {
 
   out.push(box(0, 0.05, 0, hw * 2 + 0.14, 0.1, hd * 2 + 0.14, ctx.p.base));
   out.push(box(0, h / 2 + 0.1, 0, hw * 2, h, hd * 2, ctx.wall));
-  // Franja de zócalo.
   out.push(box(0, 0.1 + fh * 0.5, 0, hw * 2 + 0.05, fh, hd * 2 + 0.05, shade(ctx.wall, -0.07)));
   allFacades(out, ctx, hw, hd, 0.1, Math.max(2, floors), fh, ctx.style.windows, ctx.style.windows === "shop");
+  for (let f = 2; f < Math.max(2, floors); f += 3) {
+    const y = 0.1 + f * fh;
+    out.push(box(0, y, 0, hw * 2 + 0.05, 0.06, hd * 2 + 0.05, ctx.p.trim));
+  }
+  out.push(box(-hw, h / 2 + 0.1, -hd, 0.07, h, 0.07, shade(ctx.p.trim, -0.04)));
+  out.push(box(hw, h / 2 + 0.1, -hd, 0.07, h, 0.07, shade(ctx.p.trim, -0.04)));
 
   if (ctx.style.balconies) {
     for (let f = 1; f < Math.max(2, floors); f++) {
@@ -285,7 +305,9 @@ function tower(ctx: Ctx): Part[] {
     hd *= 1 - setback;
   }
   parapet(out, ctx, hw, hd, y);
-  roofFurniture(out, ctx, hw, hd, y, 2);
+  out.push(box(0, y + 0.22, 0, hw * 1.1, 0.36, hd * 1.1, shade(ctx.wall, -0.08)));
+  out.push(box(0, y + 0.42, 0, hw * 0.7, 0.08, hd * 0.7, ctx.p.roof));
+  roofFurniture(out, ctx, hw, hd, y + 0.42, 3);
   if (ctx.style.antenna) {
     out.push(cyl(0, y + 0.9, 0, 0.035, 1.8, 0x9aa0a6));
     out.push({ g: "sphere", x: 0, y: y + 1.82, z: 0, sx: 0.07, sy: 0.07, sz: 0.07, color: 0xff5a4a, emis: 1, seg: 6 });
@@ -548,8 +570,8 @@ export function partsForBuilding(kind: string, variant: number): Part[] {
 export function variantsFor(kind: string): number {
   const def = DEFS[kind];
   if (!def) return 1;
-  if (def.style.shape === "house" || def.style.shape === "row") return 6;
-  if (def.zone !== "none") return 4;
+  if (def.style.shape === "house" || def.style.shape === "row") return 8;
+  if (def.zone !== "none") return 5;
   return 2;
 }
 

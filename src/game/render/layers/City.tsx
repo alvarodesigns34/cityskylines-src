@@ -6,9 +6,9 @@ import { roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, idx } from "../../sim/types";
 import { sim } from "../../store";
 import { buildingGeometry, lodGeometry, variantsFor } from "../geom/buildings";
-import { lampGeometry, rockGeometry, treeGeometry } from "../geom/props";
+import { grassGeometry, lampGeometry, rockGeometry, treeGeometry } from "../geom/props";
 import { bridgeGeometry, roadGeometry } from "../geom/roads";
-import { createCityMaterial } from "../materials";
+import { createCityMaterial, createFoliageMaterial } from "../materials";
 import { useSimVersion } from "../useSimVersion";
 import { viewState, viewTarget } from "../viewTarget";
 
@@ -223,7 +223,9 @@ export function Buildings() {
 
 export function Vegetation() {
   const rev = useSimVersion((s) => s.treesVersion + s.terrainVersion);
-  const material = useCityMaterial();
+  const material = useMemo(() => createFoliageMaterial(), []);
+  const rockMat = useCityMaterial();
+  useEffect(() => () => material.dispose(), [material]);
 
   const buckets = useMemo(() => {
     const species: Bucket[] = [0, 1, 2, 3, 4].map((s) => ({
@@ -236,16 +238,14 @@ export function Vegetation() {
       geometry: rockGeometry(s as 0 | 1),
       items: [],
     }));
-    if (!sim) return [...species, ...rocks];
+    if (!sim) return { species, rocks };
     const g = sim.grid;
     for (let z = 0; z < N; z++) {
       for (let x = 0; x < N; x++) {
         const i = idx(x, z);
         const h = g.height[i]!;
         if (g.tree[i]) {
-          // Dos o tres árboles por casilla arbolada. La especie sigue el bioma (cota,
-          // humedad por scenery) con ruido, no un corte duro de altura.
-          const count = 2 + (hash2(x, z, 3) > 0.6 ? 1 : 0);
+          const count = 2 + (hash2(x, z, 3) > 0.55 ? 1 : 0) + (hash2(x, z, 4) > 0.82 ? 1 : 0);
           const moist = g.scenery[i]!;
           const elev = Math.max(0, Math.min(1, h / 7));
           for (let k = 0; k < count; k++) {
@@ -264,7 +264,7 @@ export function Vegetation() {
               y: h,
               z: z + 0.5 + jz * 0.72,
               rot: (hash2(x + k, z + k, 23) * 4) | 0,
-              scale: 0.78 + hash2(x, z + k, 29) * 0.65,
+              scale: 0.82 + hash2(x, z + k, 29) * 0.7,
             });
           }
         } else if (g.terrain[i] === TERRAIN.rock && hash2(x, z, 31) > 0.55) {
@@ -279,15 +279,65 @@ export function Vegetation() {
         }
       }
     }
-    return [...species, ...rocks];
+    return { species, rocks };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rev]);
 
   return (
     <group>
-      {buckets.map((b) => (
+      {buckets.species.map((b) => (
         <InstancedBucket key={b.key} bucket={b} material={material} receiveShadow={false} />
       ))}
+      {buckets.rocks.map((b) => (
+        <InstancedBucket key={b.key} bucket={b} material={rockMat} receiveShadow={false} />
+      ))}
+    </group>
+  );
+}
+
+/** Mechones de hierba cerca de la cámara. Se ocultan al alejarse. */
+export function Grass() {
+  const rev = useSimVersion((s) => s.terrainVersion + s.buildingsVersion + s.roadsVersion + s.treesVersion);
+  const material = useMemo(() => createFoliageMaterial({ roughness: 0.95 }), []);
+  useEffect(() => () => material.dispose(), [material]);
+  const ref = useRef<THREE.Group>(null);
+
+  const bucket = useMemo<Bucket>(() => {
+    const items: Bucket["items"] = [];
+    if (sim) {
+      const g = sim.grid;
+      for (let z = 0; z < N; z++) {
+        for (let x = 0; x < N; x++) {
+          const i = idx(x, z);
+          if (g.terrain[i] !== TERRAIN.grass) continue;
+          if (g.road[i] !== ROAD.none) continue;
+          if (g.building[i]! >= 0) continue;
+          if (g.slope[i]! > 0.42) continue;
+          if (hash2(x, z, 61) < 0.35) continue;
+          const count = g.tree[i] ? 1 : 1 + (hash2(x, z, 67) > 0.6 ? 1 : 0);
+          for (let k = 0; k < count; k++) {
+            items.push({
+              x: x + 0.2 + hash2(x + k, z, 71) * 0.6,
+              y: g.height[i]!,
+              z: z + 0.2 + hash2(x, z + k, 73) * 0.6,
+              rot: (hash2(x + k, z, 79) * 4) | 0,
+              scale: 0.7 + hash2(x, z + k, 83) * 0.9,
+            });
+          }
+        }
+      }
+    }
+    return { key: "grass", geometry: grassGeometry(), items };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rev]);
+
+  useFrame(() => {
+    if (ref.current) ref.current.visible = viewState.distance < 58;
+  });
+
+  return (
+    <group ref={ref}>
+      <InstancedBucket bucket={bucket} material={material} castShadow={false} receiveShadow={false} />
     </group>
   );
 }

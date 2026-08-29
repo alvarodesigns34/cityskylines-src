@@ -2,10 +2,12 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { MAX_HEIGHT, WATER_LEVEL } from "../../sim/generate";
+import { hash2 } from "../../sim/rng";
 import { N, TERRAIN, idx } from "../../sim/types";
 import { sim } from "../../store";
 import { skyFor } from "../daynight";
-import { createSkyMaterial, createTerrainMaterial, createWaterMaterial } from "../materials";
+import { mergeParts, type Part } from "../geom/parts";
+import { cityUniforms, createSkyMaterial, createTerrainMaterial, createWaterMaterial } from "../materials";
 import { TERRAIN_COLORS } from "../palettes";
 import { useSimVersion } from "../useSimVersion";
 import { viewState, viewTarget } from "../viewTarget";
@@ -76,7 +78,8 @@ function buildTerrainGeometry(): THREE.BufferGeometry {
 
       // Ruido suave para que no se vea el damero.
       const n = ((cx * 37 + cz * 71) % 13) / 13 - 0.5;
-      c.setRGB(col[0] * (1 + n * 0.08), col[1] * (1 + n * 0.07), col[2] * (1 + n * 0.09));
+      const n2 = ((cx * 19 + cz * 53) % 9) / 9 - 0.5;
+      c.setRGB(col[0] * (1 + n * 0.1 + n2 * 0.05), col[1] * (1 + n * 0.08), col[2] * (1 + n * 0.09));
       colors[k * 3] = c.r;
       colors[k * 3 + 1] = c.g;
       colors[k * 3 + 2] = c.b;
@@ -171,6 +174,7 @@ export function Water() {
     uniforms.uFogColor.value.copy(sky.fogColor);
     uniforms.uFogNear.value = sky.fogNear;
     uniforms.uFogFar.value = sky.fogFar;
+    uniforms.uRain.value = sim?.rain ?? 0;
   });
 
   return (
@@ -191,6 +195,7 @@ export function Sky() {
   const { material, uniforms } = useMemo(() => createSkyMaterial(), []);
   const domeRef = useRef<THREE.Mesh>(null);
   const sunRef = useRef<THREE.DirectionalLight>(null);
+  const fillRef = useRef<THREE.DirectionalLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);
   const ambRef = useRef<THREE.AmbientLight>(null);
   const fog = useMemo(() => new THREE.Fog(0xbdd8ea, 70, 230), []);
@@ -205,7 +210,6 @@ export function Sky() {
 
   useFrame(({ camera }) => {
     const sky = skyFor(sim?.hour ?? 12);
-    // La cúpula viaja con la cámara: si no, el horizonte se ve torcido al alejarse del centro.
     if (domeRef.current) domeRef.current.position.copy(camera.position);
     uniforms.uTop.value.copy(sky.skyTop);
     uniforms.uHorizon.value.copy(sky.skyHorizon);
@@ -213,7 +217,9 @@ export function Sky() {
     uniforms.uSunColor.value.copy(sky.sunColor);
     uniforms.uMoon.value.copy(sky.moonDir);
     uniforms.uNight.value = sky.night;
+    uniforms.uTime.value = cityUniforms.uTime.value;
     const rain = sim?.rain ?? 0;
+    uniforms.uRain.value = rain;
     if (rain > 0.04) {
       uniforms.uTop.value.lerp(_rainSky, rain * 0.5);
       uniforms.uHorizon.value.lerp(_rainFog, rain * 0.45);
@@ -229,13 +235,14 @@ export function Sky() {
       sun.target.position.set(tx, ty, tz);
       sun.target.updateMatrixWorld();
       const reach = Math.max(120, viewState.distance * 2.6);
-      // De noche la luz principal es la luna, no un sol bajo tierra.
       const night = sky.night > 0.55;
       const dir = night ? sky.moonDir : sky.sunDir;
       sun.position.set(tx + dir.x * reach, ty + dir.y * reach + 8, tz + dir.z * reach);
       sun.color.copy(night ? sky.moonColor : sky.sunColor);
       sun.intensity = night ? sky.moonIntensity : sky.sunIntensity;
       sun.castShadow = dir.y > 0.14;
+      sun.shadow.radius = 2.4;
+      sun.shadow.blurSamples = 8;
       const half = THREE.MathUtils.clamp(viewState.distance * 1.05, 26, 95);
       const cam = sun.shadow.camera;
       if (cam.left !== -half) {
@@ -248,6 +255,13 @@ export function Sky() {
         cam.updateProjectionMatrix();
       }
     }
+    if (fillRef.current) {
+      const { x: tx, y: ty, z: tz } = viewTarget;
+      const dir = sky.sunDir;
+      fillRef.current.position.set(tx - dir.x * 80, ty + 46, tz - dir.z * 80);
+      fillRef.current.color.copy(sky.skyHorizon);
+      fillRef.current.intensity = 0.18 + sky.daylight * 0.32;
+    }
     if (hemiRef.current) {
       hemiRef.current.color.copy(sky.skyHorizon).lerp(sky.ambientColor, 0.55);
       hemiRef.current.groundColor.copy(sky.groundColor);
@@ -255,14 +269,14 @@ export function Sky() {
     }
     if (ambRef.current) {
       ambRef.current.color.copy(sky.ambientColor);
-      ambRef.current.intensity = 0.38 + sky.night * 0.34;
+      ambRef.current.intensity = 0.34 + sky.night * 0.3;
     }
   });
 
   return (
     <>
       <mesh ref={domeRef} material={material} frustumCulled={false} renderOrder={-1}>
-        <sphereGeometry args={[900, 32, 20]} />
+        <sphereGeometry args={[900, 48, 28]} />
       </mesh>
       <directionalLight
         ref={sunRef}
@@ -271,13 +285,63 @@ export function Sky() {
         position={[60, 90, 40]}
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.04}
+        shadow-bias={-0.00035}
+        shadow-normalBias={0.035}
+        shadow-radius={2.2}
       >
         <orthographicCamera attach="shadow-camera" args={[-50, 50, 50, -50, 1, 320]} />
       </directionalLight>
+      <directionalLight ref={fillRef} intensity={0.28} position={[-40, 50, -30]} />
       <hemisphereLight ref={hemiRef} intensity={0.6} />
       <ambientLight ref={ambRef} intensity={0.25} />
     </>
   );
+}
+
+function buildHorizonGeometry(): THREE.BufferGeometry {
+  const raw: Part[] = [];
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 + hash2(i, 11, 3) * 0.28;
+    const r = 82 + hash2(i, 17, 5) * 32;
+    const x = N / 2 + Math.cos(a) * r;
+    const z = N / 2 + Math.sin(a) * r;
+    const h = 4.2 + hash2(i, 23, 7) * 11;
+    const w = 9 + hash2(i, 29, 9) * 16;
+    const col = hash2(i, 31, 2) > 0.55 ? 0x5a6860 : 0x4e5c58;
+    raw.push({ g: "cone", x, y: h * 0.22 - 1.8, z, sx: w * 0.72, sy: h * 0.85, sz: w * 0.72, color: col, seg: 7 });
+    raw.push({
+      g: "cone",
+      x: x + (hash2(i, 41, 4) - 0.5) * w * 0.45,
+      y: h * 0.12 - 1.5,
+      z: z + (hash2(i, 43, 6) - 0.5) * w * 0.45,
+      sx: w * 0.42,
+      sy: h * 0.55,
+      sz: w * 0.42,
+      color: 0x3d4a48,
+      seg: 6,
+    });
+  }
+  return mergeParts(raw);
+}
+
+/** Silueta de montes fuera del mapa: el horizonte deja de ser un disco plano. */
+export function Horizon() {
+  const geo = useMemo(() => buildHorizonGeometry(), []);
+  const mat = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        vertexColors: true,
+        color: 0xffffff,
+        fog: true,
+      }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      geo.dispose();
+      mat.dispose();
+    },
+    [geo, mat],
+  );
+  return <mesh geometry={geo} material={mat} receiveShadow={false} castShadow={false} frustumCulled={false} />;
 }

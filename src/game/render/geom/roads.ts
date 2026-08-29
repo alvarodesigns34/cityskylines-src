@@ -36,6 +36,7 @@ export function roadGeometry(cls: number, mask: number): THREE.BufferGeometry {
 
   // Calzada: cuadrado central + un brazo por cada conexión.
   out.push(box(0, y, 0, w, th, w, ASPHALT));
+  out.push(box(0, y + 0.002, 0, w * 0.42, th, w * 0.42, ASPHALT_WORN));
   for (let d = 0; d < 4; d++) {
     if (!(mask & DIR_BITS[d]!)) continue;
     const [dx, dz] = DIR_VEC[d]!;
@@ -120,6 +121,8 @@ export function roadGeometry(cls: number, mask: number): THREE.BufferGeometry {
       }
     }
     out.push(box(0, y + th / 2 - 0.004, 0, w * 0.94, 0.01, w * 0.94, ASPHALT_WORN));
+    out.push(box(0.08, markY + 0.001, 0.06, 0.12, 0.012, 0.12, 0x4a4e54));
+    out.push(box(-0.1, markY + 0.001, -0.08, 0.08, 0.012, 0.08, 0x3a3e44));
   }
 
   g = mergeParts(out);

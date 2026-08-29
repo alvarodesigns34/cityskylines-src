@@ -5,10 +5,10 @@ import { N } from "../sim/types";
 import { sim, useGame } from "../store";
 import { CameraRig } from "./CameraRig";
 import { skyFor } from "./daynight";
-import { Buildings, Roads, StreetLamps, Vegetation } from "./layers/City";
-import { Rain, Smoke, Vehicles } from "./layers/Effects";
+import { Buildings, Grass, Roads, StreetLamps, Vegetation } from "./layers/City";
+import { Clouds, Rain, Smoke, Vehicles } from "./layers/Effects";
 import { DataOverlay, Ghost, Selection, ZonePlates } from "./layers/Overlays";
-import { Sky, Terrain, Water } from "./layers/Terrain";
+import { Horizon, Sky, Terrain, Water } from "./layers/Terrain";
 import { cityUniforms } from "./materials";
 
 export function CityCanvas({ interactive }: { interactive: boolean }) {
@@ -16,9 +16,9 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
   return (
     <Canvas
       className="absolute inset-0"
-      shadows="percentage"
-      dpr={[1, 1.75]}
-      camera={{ fov: 42, near: 0.5, far: 2200, position: [30, 34, 52] }}
+      shadows="soft"
+      dpr={[1, 2]}
+      camera={{ fov: 40, near: 0.5, far: 2200, position: [30, 34, 52] }}
       gl={{
         antialias: true,
         powerPreference: "high-performance",
@@ -27,7 +27,7 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
       }}
       onCreated={({ gl, scene }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.08;
+        gl.toneMappingExposure = 1.12;
         scene.background = null;
         gl.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
       }}
@@ -46,13 +46,16 @@ function SceneRoot({ interactive }: { interactive: boolean }) {
       {sim ? (
         <group>
           <Terrain />
+          <Horizon />
           <Water />
           <Roads />
           <StreetLamps />
           <Vegetation />
+          <Grass />
           <Buildings />
           <Vehicles />
           <Smoke />
+          <Clouds />
           <Rain />
           {interactive ? <ZonePlates /> : null}
           {interactive ? <DataOverlay /> : null}
@@ -101,7 +104,7 @@ function SimTicker({ interactive }: { interactive: boolean }) {
     cityUniforms.uNight.value = sky.night;
     cityUniforms.uRain.value = sim.rain;
     cityUniforms.uTime.value += dt;
-    gl.toneMappingExposure = 1.08 + sky.night * 0.22;
+    gl.toneMappingExposure = 1.12 + sky.night * 0.2;
 
     snapAcc.current += dt;
     if (snapAcc.current > 0.25) {
