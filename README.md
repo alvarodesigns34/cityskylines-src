@@ -3,6 +3,8 @@
 Constructor de ciudades 3D para navegador, inspirado en *Cities: Skylines*.
 Repositorio: [alvarodesigns34/cityskylines-src](https://github.com/alvarodesigns34/cityskylines-src).
 
+**Jugar: https://alvarodesigns34.github.io/cityskylines-src/**
+
 Bucle: trazar la red → zonificar junto a ella → dar luz y agua → subir el valor del suelo con
 servicios → ver crecer y densificarse la ciudad → equilibrar presupuesto, humo y atascos.
 
@@ -30,8 +32,15 @@ npm run dev        # http://localhost:8080
 npm run typecheck
 npm run lint
 npm test           # incluye 13 pruebas de simulación
-npm run build
+npm run build      # app con servidor (TanStack Start + Nitro)
+npm run build:pages  # SPA estática que se publica en GitHub Pages
 ```
+
+Cada push a `main` publica la versión estática automáticamente
+(`.github/workflows/pages.yml`), previo typecheck y pruebas de simulación. Esa build es
+independiente de la de servidor: el juego no toca backend en ningún momento (la partida vive en
+`localStorage`), así que `vite.pages.config.ts` monta el mismo `GameShell` sin router ni Nitro y
+no puede romper el entorno de desarrollo.
 
 Auth y base de datos están desactivados a propósito; la partida se guarda en `localStorage`.
 

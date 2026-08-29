@@ -28,3 +28,6 @@ artifacts/
 # editor
 .idea/
 .vscode/
+
+# static build for GitHub Pages
+dist-pages/
