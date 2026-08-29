@@ -173,7 +173,7 @@ export function updateVehicles(sim: CitySim, dt: number) {
   while (sim.vehicles.length > cap + 6) sim.vehicles.pop();
 
   if (dt <= 0) {
-    for (const v of sim.vehicles) place(sim, v);
+    for (const v of sim.vehicles) place(sim, v, 0);
     return;
   }
 
@@ -182,7 +182,7 @@ export function updateVehicles(sim: CitySim, dt: number) {
     const a = v.path[v.i]!;
     const b = v.path[v.i + 1];
     if (b === undefined) continue;
-    if (g.road[a] === ROAD.none || g.road[b] === ROAD.none) continue; // la calle se demolió
+    if (g.road[a] === ROAD.none || g.road[b] === ROAD.none) continue; // la calle se demió
     // La velocidad real cae con la congestión de la casilla que se pisa.
     const cls = g.road[b]!;
     const jam = Math.min(1, g.traffic[b]!);
@@ -194,7 +194,7 @@ export function updateVehicles(sim: CitySim, dt: number) {
       if (v.i >= v.path.length - 1) break;
     }
     if (v.i >= v.path.length - 1) continue;
-    place(sim, v);
+    place(sim, v, dt);
     alive.push(v);
   }
   sim.vehicles = alive;
@@ -227,6 +227,7 @@ function spawnVehicle(sim: CitySim) {
     y: 0,
     yaw: 0,
   });
+  place(sim, sim.vehicles[sim.vehicles.length - 1]!, 0);
 }
 
 function reversed(a: Int32Array): Int32Array {
@@ -235,7 +236,7 @@ function reversed(a: Int32Array): Int32Array {
   return out;
 }
 
-function place(sim: CitySim, v: Vehicle) {
+function place(sim: CitySim, v: Vehicle, dt = 0) {
   const g = sim.grid;
   const a = v.path[v.i]!;
   const b = v.path[Math.min(v.i + 1, v.path.length - 1)]!;
@@ -252,7 +253,17 @@ function place(sim: CitySim, v: Vehicle) {
   v.x = ax + 0.5 + dx * t + dz * off;
   v.z = az + 0.5 + dz * t - dx * off;
   v.y = Math.max(roadSurface(g, a), roadSurface(g, b)) + 0.05;
-  v.yaw = Math.atan2(dx, dz);
+  // La silueta del vehículo mira a −Z; hay que girar π para que el morro apunte al destino.
+  // Si no, los coches circulan marcha atrás. En las esquinas se interpola para no teletransportar el yaw.
+  const target = Math.atan2(dx, dz) + Math.PI;
+  if (dt <= 0) {
+    v.yaw = target;
+  } else {
+    let dYaw = target - v.yaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    v.yaw += dYaw * Math.min(1, 9 * dt);
+  }
 }
 
 export function hourOfTick(tick: number): number {
