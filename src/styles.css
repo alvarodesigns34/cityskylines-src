@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* La detección automática de Tailwind parte de la raíz de Vite. La build estática de
+   GitHub Pages tiene su raíz en `pages/`, así que sin esto no encontraría ninguna clase
+   de `src/` y el HUD saldría sin estilos. Es aditivo: no cambia la build de servidor. */
+@source "../src";
+
 @theme {
   --color-bg: #0b1118;
   --color-surface: #141c26;
