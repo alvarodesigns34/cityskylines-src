@@ -5,18 +5,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Publica empujando a la rama `gh-pages`, que es la fuente que GitHub Pages activó solo
+# al crearla. La vía oficial (`actions/configure-pages` + `deploy-pages`) necesita permiso
+# de administración para dar de alta el sitio, y el token del workflow no lo tiene:
+# fallaba con "Resource not accessible by integration".
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# Un despliegue a la vez; si llegan varios pushes, gana el último.
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  publicar:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +29,7 @@ jobs:
 
       - run: npm ci
 
-      # Comprobaciones antes de publicar: si algo se rompe, no llega a producción.
+      # Si algo se rompe, no llega a producción.
       - run: npm run typecheck
       - run: node --experimental-strip-types --import ./scripts/register-ts.mjs --test 'src/game/**/*.test.ts'
 
@@ -37,23 +38,20 @@ jobs:
         env:
           PAGES_BASE: /${{ github.event.repository.name }}/
 
-      # El juego es una sola ruta: cualquier subruta cae en el mismo SPA.
-      - run: cp dist-pages/index.html dist-pages/404.html
+      - name: Preparar la publicación
+        run: |
+          cp dist-pages/index.html dist-pages/404.html
+          touch dist-pages/.nojekyll
 
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist-pages
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Empujar a gh-pages
+        run: |
+          cd dist-pages
+          git init -q
+          git checkout -qb gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Publica ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
