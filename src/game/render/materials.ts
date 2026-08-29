@@ -185,13 +185,16 @@ export function createTerrainMaterial() {
          float n = fbm(vWorldPos.xz * 1.55);
          float n2 = fbm(vWorldPos.xz * 7.4 + 9.0);
          float n3 = noise(vWorldPos.xz * 28.0);
-         vec3 lush = vec3(0.26, 0.46, 0.18);
-         vec3 dry = vec3(0.50, 0.48, 0.26);
-         vec3 clover = vec3(0.22, 0.40, 0.20);
-         float dryness = smoothstep(0.36, 0.74, n);
-         diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.28);
-         diffuseColor.rgb *= 0.86 + n2 * 0.16 + n3 * 0.08;
-         float ao = mix(0.74, 1.0, clamp(vWorldN.y, 0.0, 1.0));
+         // Cuarta capa de altísima frecuencia: es lo que rompe el aspecto "pintura plana" al
+         // acercarse, sin necesidad de una textura real.
+         float n4 = noise(vWorldPos.xz * 74.0 + 3.0) * 0.5 + noise(vWorldPos.xz * 140.0 - 5.0) * 0.5;
+         vec3 lush = vec3(0.24, 0.45, 0.17);
+         vec3 dry = vec3(0.52, 0.49, 0.25);
+         vec3 clover = vec3(0.2, 0.39, 0.19);
+         float dryness = smoothstep(0.34, 0.76, n);
+         diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.34);
+         diffuseColor.rgb *= 0.82 + n2 * 0.2 + n3 * 0.1 + (n4 - 0.5) * 0.1;
+         float ao = mix(0.68, 1.0, clamp(vWorldN.y, 0.0, 1.0));
          diffuseColor.rgb *= ao;
          float wet = clamp(uRain, 0.0, 1.0);
          diffuseColor.rgb *= 1.0 - wet * 0.32;
@@ -200,7 +203,8 @@ export function createTerrainMaterial() {
       .replace(
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
-         roughnessFactor = mix(roughnessFactor, 0.32, clamp(uRain * 0.6, 0.0, 0.6));`,
+         roughnessFactor = mix(roughnessFactor, 0.32, clamp(uRain * 0.6, 0.0, 0.6));
+         roughnessFactor -= n4 * 0.08;`,
       );
   };
   mat.customProgramCacheKey = () => "terrain-noise-v1";
@@ -232,6 +236,19 @@ const waterFragment = /* glsl */ `
   uniform float uFogFar;
   varying vec3 vWorld;
 
+  float hashW(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noiseW(vec2 p) {
+    vec2 i = floor(p); vec2 f = fract(p);
+    float a = hashW(i), b = hashW(i + vec2(1.0, 0.0)), c = hashW(i + vec2(0.0, 1.0)), d = hashW(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+  float fbmW(vec2 p) {
+    float v = 0.0; float a = 0.55;
+    for (int i = 0; i < 4; i++) { v += a * noiseW(p); p = p * 2.05 + 17.0; a *= 0.52; }
+    return v;
+  }
+
   void main() {
     vec2 cell = vWorld.xz / uGrid;
     float inside = step(0.0, cell.x) * step(cell.x, 1.0) * step(0.0, cell.y) * step(cell.y, 1.0);
@@ -240,6 +257,9 @@ const waterFragment = /* glsl */ `
 
     float dist = length(cameraPosition - vWorld);
     float detail = smoothstep(280.0, 36.0, dist);
+    // Bandas y manchas a gran escala (corrientes, bajíos, reflejo difuso del cielo): sin esto
+    // el mar es un relleno plano en cuanto la cámara se aleja un poco.
+    float swell = fbmW(vWorld.xz * 0.028 + uTime * 0.015) * 0.6 + fbmW(vWorld.xz * 0.07 - uTime * 0.01) * 0.4;
     float t = uTime;
     float dx = cos(vWorld.x * 0.55 + t * 0.9) * 0.022
              + cos((vWorld.x + vWorld.z) * 0.23 + t * 0.45) * 0.014
@@ -255,12 +275,18 @@ const waterFragment = /* glsl */ `
     float fres = pow(1.0 - max(dot(n, viewDir), 0.0), 3.2);
 
     vec3 base = mix(uShallow, uDeep, depth);
-    base *= 1.0 - uRain * 0.18;
+    base *= (0.88 + swell * 0.24) * (1.0 - uRain * 0.18);
     vec3 col = mix(base, uSkyColor, fres * 0.68);
+    // Reflejo difuso del cielo, más fuerte donde el mar se ve más "liso" a lo lejos.
+    col = mix(col, uSkyColor, (1.0 - detail) * 0.22);
 
     vec3 h = normalize(uSun + viewDir);
     float spec = pow(max(dot(n, h), 0.0), mix(90.0, 28.0, uRain));
     col += uSunColor * spec * (1.55 + uRain * 0.6) * (1.0 - uNight * 0.55) * detail;
+    // Destellos dispersos (glitter): sin esto el brillo del sol es un único punto y el resto
+    // del mar, lejos de ese punto, se ve muerto.
+    float glitter = smoothstep(0.82, 1.0, fract(noiseW(vWorld.xz * 6.0 + uTime * 0.3)));
+    col += uSunColor * glitter * spec * 2.2 * (1.0 - uNight * 0.7);
 
     float foam = smoothstep(0.13, 0.0, depth) * inside
                * (0.45 + 0.55 * sin(vWorld.x * 3.1 + vWorld.z * 2.7 + t * 1.8));

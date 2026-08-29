@@ -305,26 +305,34 @@ export function Sky() {
 
 function buildHorizonGeometry(): THREE.BufferGeometry {
   const raw: Part[] = [];
-  for (let i = 0; i < 24; i++) {
-    const a = (i / 24) * Math.PI * 2 + hash2(i, 11, 3) * 0.28;
-    const r = 82 + hash2(i, 17, 5) * 32;
+  // Cordillera continua, no picos sueltos: más casillas, radio menor y más solapadas para que
+  // cierre el mar en vez de dejar huecos de agua plana entre montaña y montaña.
+  const count = 42;
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + hash2(i, 11, 3) * 0.2;
+    const r = 58 + hash2(i, 17, 5) * 20;
     const x = N / 2 + Math.cos(a) * r;
     const z = N / 2 + Math.sin(a) * r;
-    const h = 4.2 + hash2(i, 23, 7) * 11;
-    const w = 9 + hash2(i, 29, 9) * 16;
-    const col = hash2(i, 31, 2) > 0.55 ? 0x5a6860 : 0x4e5c58;
-    raw.push({ g: "cone", x, y: h * 0.22 - 1.8, z, sx: w * 0.72, sy: h * 0.85, sz: w * 0.72, color: col, seg: 7 });
+    const h = 7 + hash2(i, 23, 7) * 15;
+    const w = 14 + hash2(i, 29, 9) * 15;
+    const ridge = hash2(i, 31, 2) > 0.5;
+    const col = ridge ? 0x596258 : 0x4a544c;
+    raw.push({ g: "cone", x, y: h * 0.24 - 1.6, z, sx: w * 0.78, sy: h * 0.9, sz: w * 0.78, color: col, seg: 7 });
     raw.push({
       g: "cone",
-      x: x + (hash2(i, 41, 4) - 0.5) * w * 0.45,
-      y: h * 0.12 - 1.5,
-      z: z + (hash2(i, 43, 6) - 0.5) * w * 0.45,
-      sx: w * 0.42,
-      sy: h * 0.55,
-      sz: w * 0.42,
-      color: 0x3d4a48,
+      x: x + (hash2(i, 41, 4) - 0.5) * w * 0.4,
+      y: h * 0.14 - 1.3,
+      z: z + (hash2(i, 43, 6) - 0.5) * w * 0.4,
+      sx: w * 0.46,
+      sy: h * 0.62,
+      sz: w * 0.46,
+      color: 0x3a423c,
       seg: 6,
     });
+    // Cima nevada en los picos más altos: rompe la silueta gris uniforme.
+    if (h > 17) {
+      raw.push({ g: "cone", x, y: h * 0.62 - 1.4, z, sx: w * 0.3, sy: h * 0.34, sz: w * 0.3, color: 0xe8ecef, seg: 6 });
+    }
   }
   return mergeParts(raw);
 }

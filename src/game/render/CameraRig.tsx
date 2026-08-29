@@ -154,7 +154,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       if (pointers.current.size === 2) {
         const [a, b] = [...pointers.current.values()];
         const d = Math.hypot(a!.x - b!.x, a!.y - b!.y);
-        if (pinch.current > 0) dist.current = clamp(dist.current * (pinch.current / d), 9, 110);
+        if (pinch.current > 0) dist.current = clamp(dist.current * (pinch.current / d), 9, 84);
         pinch.current = d;
         yaw.current -= dx * 0.004;
         return;
@@ -199,7 +199,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      dist.current = clamp(dist.current * (1 + Math.sign(e.deltaY) * 0.12), 9, 110);
+      dist.current = clamp(dist.current * (1 + Math.sign(e.deltaY) * 0.12), 9, 84);
     };
 
     el.addEventListener("pointerdown", onDown);
@@ -234,7 +234,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       tz.current += (rz * input.panX + fz * input.panZ) * panSpeed * d;
       yaw.current += input.rotate * 1.1 * d;
       pitch.current = clamp(pitch.current + input.tilt * 0.9 * d, 0.22, 1.35);
-      dist.current = clamp(dist.current + input.zoom * 26 * d, 9, 110);
+      dist.current = clamp(dist.current + input.zoom * 26 * d, 9, 84);
       panVel.current = Math.hypot(input.panX, input.panZ) * panSpeed;
     }
     tx.current = clamp(tx.current, -6, N + 6);
