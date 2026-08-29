@@ -138,6 +138,8 @@ function buildDepthTexture(): THREE.DataTexture {
 }
 
 const _shallowMix = new THREE.Color();
+const _rainFog = new THREE.Color(0x6a7484);
+const _rainSky = new THREE.Color(0x5a6472);
 
 export function Water() {
   const ref = useRef<THREE.Mesh>(null);
@@ -209,23 +211,31 @@ export function Sky() {
     uniforms.uHorizon.value.copy(sky.skyHorizon);
     uniforms.uSun.value.copy(sky.sunDir);
     uniforms.uSunColor.value.copy(sky.sunColor);
+    uniforms.uMoon.value.copy(sky.moonDir);
     uniforms.uNight.value = sky.night;
-    fog.color.copy(sky.fogColor);
-    fog.near = sky.fogNear;
-    fog.far = sky.fogFar;
+    const rain = sim?.rain ?? 0;
+    if (rain > 0.04) {
+      uniforms.uTop.value.lerp(_rainSky, rain * 0.5);
+      uniforms.uHorizon.value.lerp(_rainFog, rain * 0.45);
+      uniforms.uNight.value = Math.min(1, sky.night + rain * 0.12);
+    }
+    fog.color.copy(sky.fogColor).lerp(_rainFog, rain * 0.35);
+    fog.near = sky.fogNear * (1 - rain * 0.22);
+    fog.far = sky.fogFar * (1 - rain * 0.18);
 
     const sun = sunRef.current;
     if (sun) {
-      // La sombra se centra en el punto que MIRA la cámara, no en dónde está la cámara.
       const { x: tx, y: ty, z: tz } = viewTarget;
       sun.target.position.set(tx, ty, tz);
       sun.target.updateMatrixWorld();
       const reach = Math.max(120, viewState.distance * 2.6);
-      sun.position.set(tx + sky.sunDir.x * reach, ty + sky.sunDir.y * reach + 8, tz + sky.sunDir.z * reach);
-      sun.color.copy(sky.sunColor);
-      sun.intensity = sky.sunIntensity;
-      sun.castShadow = sky.daylight > 0.12;
-      // La extensión del mapa de sombras acompaña al zoom: nitidez cerca, cobertura lejos.
+      // De noche la luz principal es la luna, no un sol bajo tierra.
+      const night = sky.night > 0.55;
+      const dir = night ? sky.moonDir : sky.sunDir;
+      sun.position.set(tx + dir.x * reach, ty + dir.y * reach + 8, tz + dir.z * reach);
+      sun.color.copy(night ? sky.moonColor : sky.sunColor);
+      sun.intensity = night ? sky.moonIntensity : sky.sunIntensity;
+      sun.castShadow = dir.y > 0.14;
       const half = THREE.MathUtils.clamp(viewState.distance * 1.05, 26, 95);
       const cam = sun.shadow.camera;
       if (cam.left !== -half) {
@@ -239,15 +249,13 @@ export function Sky() {
       }
     }
     if (hemiRef.current) {
-      // El horizonte del amanecer/atardecer es muy saturado: si se usa tal cual como luz de
-      // cielo, tiñe de naranja hasta la cara en sombra. Se mezcla hacia el ambiente neutro.
-      hemiRef.current.color.copy(sky.skyHorizon).lerp(sky.ambientColor, 0.62);
+      hemiRef.current.color.copy(sky.skyHorizon).lerp(sky.ambientColor, 0.55);
       hemiRef.current.groundColor.copy(sky.groundColor);
-      hemiRef.current.intensity = sky.ambientIntensity;
+      hemiRef.current.intensity = sky.ambientIntensity * (0.95 + rain * 0.08);
     }
     if (ambRef.current) {
       ambRef.current.color.copy(sky.ambientColor);
-      ambRef.current.intensity = 0.22 + sky.night * 0.16;
+      ambRef.current.intensity = 0.38 + sky.night * 0.34;
     }
   });
 

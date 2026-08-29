@@ -45,13 +45,18 @@ import {
   type HistoryPoint,
   type Notice,
   type OverlayKind,
+  type Policies,
   type Snapshot,
   type Tool,
   type Vehicle,
   type Zone,
+  DEFAULT_POLICIES,
 } from "./types";
 
 let noticeSeq = 1;
+
+/** Coste de plantar un árbol en una parcela vacía. */
+const TREE_COST = 18;
 
 export interface PlaceCheck {
   ok: boolean;
@@ -78,8 +83,8 @@ export class CitySim {
   routes: Int32Array[] = [];
   rand: () => number = Math.random;
 
-  // Tiempo
-  tickCount = 0;
+  // Tiempo. Arranca a las 7:00; tickCount tiene que coincidir o el primer tick salta a medianoche.
+  tickCount = Math.round((7 / 24) * TICKS_PER_DAY);
   day = 1;
   hour = 7;
   dayFraction = 7 / 24;
@@ -123,6 +128,9 @@ export class CitySim {
   congestion = 0;
   windX = 0.6;
   windZ = -0.4;
+  rain = 0;
+  rainTarget = 0;
+  policies: Policies = { ...DEFAULT_POLICIES };
 
   // Servicios
   powerNeed = 0;
@@ -253,6 +261,16 @@ export class CitySim {
       this.pruneNotices();
       this.advise();
     }
+    this.tickWeather();
+  }
+
+  /** Frente de lluvia: entra y sale despacio para que el cielo y el tráfico no den saltos. */
+  private tickWeather() {
+    if (this.tickCount % 90 === 0) {
+      this.rainTarget = this.rand() < 0.28 ? 0.45 + this.rand() * 0.55 : 0;
+    }
+    this.rain += (this.rainTarget - this.rain) * 0.04;
+    if (this.rain < 0.008 && this.rainTarget === 0) this.rain = 0;
   }
 
   /** Recalcula todo de golpe (arranque, carga, cambio grande). */
@@ -368,6 +386,16 @@ export class CitySim {
       return { ok: true, cost, ...fp };
     }
 
+    if (tool === "tree-plant") {
+      if (g.terrain[i] === TERRAIN.water) return none("Es agua");
+      if (g.road[i] !== ROAD.none) return none("Hay una vía");
+      if (g.building[i]! >= 0) return none("Parcela ocupada");
+      if (g.tree[i] === 1) return none("Ya hay un árbol");
+      if (g.slope[i]! > 0.62) return none("Pendiente excesiva");
+      if (this.money < TREE_COST) return none("Sin fondos", TREE_COST);
+      return { ok: true, cost: TREE_COST, ...fp };
+    }
+
     if (tool.startsWith("build:")) {
       const kind = tool.slice(6);
       const def = DEFS[kind];
@@ -464,6 +492,13 @@ export class CitySim {
       return true;
     }
 
+    if (tool === "tree-plant") {
+      g.tree[i] = 1;
+      this.money -= check.cost;
+      this.treesVersion++;
+      return true;
+    }
+
     return false;
   }
 
@@ -500,6 +535,8 @@ export class CitySim {
       pollution: g.pollution[i]!,
       noise: g.noise[i]!,
       traffic: g.traffic[i]!,
+      demand:
+        g.zoneOf(i) === "R" ? this.demandR : g.zoneOf(i) === "C" ? this.demandC : g.zoneOf(i) === "I" ? this.demandI : 0,
       services: Object.fromEntries(SERVICES.map((k) => [k, g.service[k]![i]!])) as Record<string, number>,
       building: b
         ? {
@@ -640,6 +677,9 @@ export class CitySim {
       notices: this.notices.slice(0, 4),
       bankrupt: this.money < 0,
       history: this.history,
+
+      rain: this.rain,
+      policies: { ...this.policies },
     };
   }
 
@@ -675,6 +715,8 @@ export class CitySim {
         wellbeing: Number(b.wellbeing.toFixed(3)),
       })),
       history: this.history,
+      rain: Number(this.rain.toFixed(3)),
+      policies: { ...this.policies },
     };
   }
 
@@ -705,6 +747,13 @@ export class CitySim {
     sim.eduLevel = blob.eduLevel ?? 0.1;
     sim.nextBuildingId = blob.nextBuildingId ?? 1;
     sim.history = blob.history ?? [];
+    sim.rain = blob.rain ?? 0;
+    sim.rainTarget = blob.rain ?? 0;
+    sim.policies = {
+      cleanIndustry: blob.policies?.cleanIndustry ?? false,
+      housingGrant: blob.policies?.housingGrant ?? false,
+      overtime: blob.policies?.overtime ?? false,
+    };
     const a = (blob.seed % 360) * (Math.PI / 180);
     sim.windX = Math.cos(a) * 0.9;
     sim.windZ = Math.sin(a) * 0.9;
@@ -786,6 +835,9 @@ class CitySimDefaults {
   avgNoise = 0;
   avgLandValue = 0.3;
   congestion = 0;
+  rain = 0;
+  rainTarget = 0;
+  policies: Policies = { ...DEFAULT_POLICIES };
   powerNeed = 0;
   powerSupply = 0;
   powerRatio = 1;

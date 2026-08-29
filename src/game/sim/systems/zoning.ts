@@ -58,6 +58,9 @@ export function updateDemand(sim: CitySim) {
     dI = Math.max(dI, 0.55);
   }
 
+  if (sim.policies.housingGrant) dR += 0.14;
+  if (sim.policies.cleanIndustry) dI *= 0.86;
+
   sim.demandR = clamp01(dR);
   sim.demandC = clamp01(dC);
   sim.demandI = clamp01(dI);

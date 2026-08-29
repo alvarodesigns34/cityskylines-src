@@ -138,7 +138,12 @@ export const TOOL_GROUPS: ToolGroup[] = [
     id: "leisure",
     name: "Ocio",
     icon: Trees,
-    tools: [build("park_small", Trees), build("park_plaza", TreePine), build("park_large", TreePine)],
+    tools: [
+      { tool: "tree-plant", name: "Árbol", hint: "Planta un árbol: limpia el aire y sube el valor del suelo.", cost: 18, icon: TreePine, tier: 0 },
+      build("park_small", Trees),
+      build("park_plaza", TreePine),
+      build("park_large", TreePine),
+    ],
   },
 ];
 

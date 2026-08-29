@@ -1,5 +1,5 @@
 import { TAX_MAX, TAX_MIN, debtCeiling } from "@/game/sim/systems/economy";
-import { SERVICES, type Snapshot } from "@/game/sim/types";
+import { SERVICES, type PolicyId, type Snapshot } from "@/game/sim/types";
 import { sim, useGame } from "@/game/store";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
@@ -93,6 +93,7 @@ function TaxSlider({ label, zone, value }: { label: string; zone: "R" | "C" | "I
 export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => void }) {
   const borrow = useGame((s) => s.borrow);
   const repay = useGame((s) => s.repay);
+  const setPolicy = useGame((s) => s.setPolicy);
   const balance = snap.income - snap.expense;
   const ceiling = sim ? debtCeiling(sim) : 0;
 
@@ -111,6 +112,32 @@ export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => 
       <TaxSlider label="Vivienda" zone="R" value={snap.taxR} />
       <TaxSlider label="Comercio" zone="C" value={snap.taxC} />
       <TaxSlider label="Industria" zone="I" value={snap.taxI} />
+
+      <h3 className="mt-5 text-[11px] font-medium tracking-wide text-muted uppercase">Políticas</h3>
+      <p className="mt-1 text-[11px] leading-relaxed text-faint">
+        Ordenanzas municipales. Cada una cuesta cada día; se notan en demanda, humo y basura.
+      </p>
+      <PolicyToggle
+        id="housingGrant"
+        on={snap.policies.housingGrant}
+        label="Ayuda a la vivienda"
+        hint="Sube la demanda residencial."
+        onToggle={setPolicy}
+      />
+      <PolicyToggle
+        id="cleanIndustry"
+        on={snap.policies.cleanIndustry}
+        label="Industria limpia"
+        hint="Menos humo, algo menos de empleo industrial."
+        onToggle={setPolicy}
+      />
+      <PolicyToggle
+        id="overtime"
+        on={snap.policies.overtime}
+        label="Turno extra de basura"
+        hint="Más capacidad de recogida."
+        onToggle={setPolicy}
+      />
 
       <h3 className="mt-5 text-[11px] font-medium tracking-wide text-muted uppercase">Ingresos</h3>
       <div className="mt-1">
@@ -146,6 +173,39 @@ export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => 
         </button>
       </div>
     </Sheet>
+  );
+}
+
+function PolicyToggle({
+  id,
+  on,
+  label,
+  hint,
+  onToggle,
+}: {
+  id: PolicyId;
+  on: boolean;
+  label: string;
+  hint: string;
+  onToggle: (id: PolicyId, on: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={() => onToggle(id, !on)}
+      className={`mt-2 flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-2 text-left ${
+        on ? "border-ok/40 bg-ok/10" : "border-line/70 bg-raised/40"
+      }`}
+    >
+      <span>
+        <span className="block text-xs text-fg">{label}</span>
+        <span className="mt-0.5 block text-[11px] leading-snug text-faint">{hint}</span>
+      </span>
+      <span className={`mt-0.5 text-[11px] font-medium tabular-nums ${on ? "text-ok" : "text-muted"}`}>
+        {on ? "ON" : "OFF"}
+      </span>
+    </button>
   );
 }
 

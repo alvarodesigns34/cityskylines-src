@@ -66,8 +66,12 @@ export function resolveBudget(sim: CitySim) {
   const principal = sim.debt > 0 ? Math.min(sim.debt, sim.debt * AMORTIZATION) : 0;
   // Retirada de urgencia: lo que no trata la ciudad hay que sacarlo pagando fuera.
   const haulage = Math.max(0, sim.garbageNeed - sim.garbageCapacity) * 2.2;
+  let policyCost = 0;
+  if (sim.policies.cleanIndustry) policyCost += 90 + industrialJobs * 0.85;
+  if (sim.policies.housingGrant) policyCost += 60 + sim.pop * 0.4;
+  if (sim.policies.overtime) policyCost += 50 + sim.garbageNeed * 0.35;
   const expense =
-    (upkeepService + upkeepUtility + roadUpkeep) * admin + haulage + interest + principal;
+    (upkeepService + upkeepUtility + roadUpkeep) * admin + haulage + interest + principal + policyCost;
 
   sim.debt = Math.max(0, sim.debt - principal);
   sim.money = Math.round(sim.money + income - expense);
@@ -83,6 +87,7 @@ export function resolveBudget(sim: CitySim) {
     { label: "Suministros", amount: Math.round(upkeepUtility * admin) },
     { label: "Vías", amount: Math.round(roadUpkeep * admin) },
     { label: "Basura sin tratar", amount: Math.round(haulage) },
+    { label: "Políticas", amount: Math.round(policyCost) },
     { label: "Deuda", amount: Math.round(interest + principal) },
   ].filter((l) => l.amount !== 0) as BudgetLine[];
 

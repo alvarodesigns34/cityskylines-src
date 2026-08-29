@@ -186,7 +186,8 @@ export function updateVehicles(sim: CitySim, dt: number) {
     // La velocidad real cae con la congestión de la casilla que se pisa.
     const cls = g.road[b]!;
     const jam = Math.min(1, g.traffic[b]!);
-    const speed = v.speed * ROADS[cls]!.speed * (1 - jam * 0.72) * (0.35 + rhythm * 0.8);
+    const wet = 1 - sim.rain * 0.28;
+    const speed = v.speed * ROADS[cls]!.speed * (1 - jam * 0.72) * (0.35 + rhythm * 0.8) * wet;
     v.t += speed * dt;
     while (v.t >= 1) {
       v.t -= 1;

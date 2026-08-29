@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { CitySim, loadOrNull } from "./sim/city";
 import { hasSave } from "./sim/save";
 import { repayLoan, setTax, takeLoan } from "./sim/systems/economy";
-import type { OverlayKind, Snapshot, Tool } from "./sim/types";
+import { TICKS_PER_DAY, type OverlayKind, type PolicyId, type Snapshot, type Tool } from "./sim/types";
 
 export type Phase = "menu" | "playing";
 export type Panel = "none" | "budget" | "stats" | "services";
@@ -29,6 +29,7 @@ interface GameStore {
   pullSnapshot: () => void;
   persistNow: () => void;
   changeTax: (zone: "R" | "C" | "I", value: number) => void;
+  setPolicy: (id: PolicyId, on: boolean) => void;
   borrow: (amount: number) => void;
   repay: (amount: number) => void;
 }
@@ -60,6 +61,19 @@ function exposeQa() {
     },
     grant: (n: number) => {
       city.money += n;
+    },
+    setHour: (h: number) => {
+      city.hour = ((h % 24) + 24) % 24;
+      city.dayFraction = city.hour / 24;
+      const base = Math.floor(city.tickCount / TICKS_PER_DAY) * TICKS_PER_DAY;
+      const offset = Math.round(city.dayFraction * TICKS_PER_DAY) % TICKS_PER_DAY;
+      city.tickCount = base + (offset === 0 ? 1 : offset);
+      useGame.getState().pullSnapshot();
+    },
+    setRain: (r: number) => {
+      city.rain = Math.max(0, Math.min(1, r));
+      city.rainTarget = city.rain;
+      useGame.getState().pullSnapshot();
     },
     tick: (n: number) => {
       const wasPaused = city.paused;
@@ -180,6 +194,12 @@ export const useGame = create<GameStore>((set, get) => ({
   changeTax: (zone, value) => {
     if (!sim) return;
     setTax(sim, zone, value);
+    set({ snapshot: sim.snapshot() });
+  },
+
+  setPolicy: (id, on) => {
+    if (!sim) return;
+    sim.policies[id] = on;
     set({ snapshot: sim.snapshot() });
   },
 

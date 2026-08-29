@@ -23,7 +23,10 @@ export function updateEnvironment(sim: CitySim) {
   for (const b of sim.buildings) {
     const d = DEFS[b.kind]!;
     if (d.pollution <= 0) continue;
-    const amount = d.pollution * (d.zone === "none" ? 1 : 0.25 + 0.75 * b.occupancy);
+    const amount =
+      d.pollution *
+      (d.zone === "none" ? 1 : 0.25 + 0.75 * b.occupancy) *
+      (d.zone === "I" && sim.policies.cleanIndustry ? 0.55 : 1);
     stamp(pol, b.x + (b.w - 1) / 2, b.z + (b.d - 1) / 2, 3 + Math.sqrt(amount) * 3.6, amount * 0.17);
   }
   // El tráfico también ensucia.
@@ -78,6 +81,7 @@ export function updateEnvironment(sim: CitySim) {
     v += pol2[i]! * 0.13;
     v += lei[i]! * 0.2;
     v += gar[i]! * 0.07 * sim.garbageRatio;
+    if (g.tree[i]) v += 0.08;
     v -= g.pollution[i]! * 0.55;
     v -= g.noise[i]! * 0.28;
     // Estar cerca de la red viaria vale; estar encima de una autopista, no.

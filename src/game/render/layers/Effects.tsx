@@ -10,6 +10,7 @@ import { chimneysFor, variantsFor } from "../geom/buildings";
 import { vehicleGeometry } from "../geom/props";
 import { createCityMaterial, createSmokeMaterial } from "../materials";
 import { useSimVersion } from "../useSimVersion";
+import { viewTarget } from "../viewTarget";
 
 const dummy = new THREE.Object3D();
 const _color = new THREE.Color();
@@ -155,4 +156,77 @@ export function Smoke() {
   });
 
   return <mesh geometry={geometry} material={material} frustumCulled={false} renderOrder={3} />;
+}
+
+const RAIN_COUNT = 280;
+const _rainDummy = new THREE.Object3D();
+
+/** Ráfagas de lluvia ancladas a la cámara: no llueve fuera de lo que se ve. */
+export function Rain() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const seeds = useMemo(() => {
+    const s = new Float32Array(RAIN_COUNT * 4);
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      s[i * 4] = (Math.random() - 0.5) * 52;
+      s[i * 4 + 1] = (Math.random() - 0.5) * 52;
+      s[i * 4 + 2] = 12 + Math.random() * 16;
+      s[i * 4 + 3] = Math.random() * 22;
+    }
+    return s;
+  }, []);
+  const geometry = useMemo(() => new THREE.BoxGeometry(0.028, 0.62, 0.028), []);
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xc5d4e6,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
+
+  useFrame(({ clock }) => {
+    const mesh = ref.current;
+    if (!mesh || !sim) return;
+    const rain = sim.rain;
+    mesh.visible = rain > 0.08;
+    if (!mesh.visible) return;
+    material.opacity = 0.16 + rain * 0.38;
+    const t = clock.elapsedTime;
+    const tx = viewTarget.x;
+    const ty = viewTarget.y;
+    const tz = viewTarget.z;
+    for (let i = 0; i < RAIN_COUNT; i++) {
+      const ox = seeds[i * 4]!;
+      const oz = seeds[i * 4 + 1]!;
+      const spd = seeds[i * 4 + 2]!;
+      const off = seeds[i * 4 + 3]!;
+      const y = 16 - ((t * spd + off) % 20);
+      _rainDummy.position.set(tx + ox, Math.max(0.15, ty + y), tz + oz);
+      _rainDummy.rotation.set(0.22, 0, 0.06);
+      _rainDummy.scale.set(1, 0.7 + rain, 1);
+      _rainDummy.updateMatrix();
+      mesh.setMatrixAt(i, _rainDummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[geometry, material, RAIN_COUNT]}
+      frustumCulled={false}
+      renderOrder={6}
+      visible={false}
+    />
+  );
 }

@@ -5,6 +5,7 @@ export const cityUniforms = {
   uNight: { value: 0 },
   uLampColor: { value: new THREE.Color(0xffd9a0) },
   uTime: { value: 0 },
+  uRain: { value: 0 },
 };
 
 /**
@@ -25,6 +26,7 @@ export function createCityMaterial(params: THREE.MeshStandardMaterialParameters 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = cityUniforms.uNight;
     shader.uniforms.uLampColor = cityUniforms.uLampColor;
+    shader.uniforms.uRain = cityUniforms.uRain;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -43,17 +45,23 @@ export function createCityMaterial(params: THREE.MeshStandardMaterialParameters 
         `#include <common>
          uniform float uNight;
          uniform vec3 uLampColor;
+         uniform float uRain;
          varying float vEmis;`,
+      )
+      .replace(
+        "#include <roughnessmap_fragment>",
+        `#include <roughnessmap_fragment>
+         roughnessFactor = mix(roughnessFactor, 0.22, clamp(uRain * 0.7 + uNight * 0.12, 0.0, 0.75));`,
       )
       .replace(
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
          float lit = vEmis * uNight;
-         totalEmissiveRadiance += uLampColor * lit * 1.65;
-         diffuseColor.rgb = mix(diffuseColor.rgb, uLampColor * 0.55, lit * 0.5);`,
+         totalEmissiveRadiance += uLampColor * lit * 1.85;
+         diffuseColor.rgb = mix(diffuseColor.rgb, uLampColor * 0.5, lit * 0.42);`,
       );
   };
-  mat.customProgramCacheKey = () => "city-emissive";
+  mat.customProgramCacheKey = () => "city-emissive-rain";
   return mat;
 }
 
@@ -185,10 +193,10 @@ const skyFragment = /* glsl */ `
   uniform vec3 uHorizon;
   uniform vec3 uSun;
   uniform vec3 uSunColor;
+  uniform vec3 uMoon;
   uniform float uNight;
   varying vec3 vDir;
 
-  // Ruido barato para las estrellas.
   float hash(vec3 p) {
     p = fract(p * 0.3183099 + 0.1);
     p *= 17.0;
@@ -200,16 +208,19 @@ const skyFragment = /* glsl */ `
     float t = clamp(d.y * 1.15 + 0.08, 0.0, 1.0);
     vec3 col = mix(uHorizon, uTop, pow(t, 0.72));
 
-    // Halo alrededor del sol.
     float sun = max(dot(d, normalize(uSun)), 0.0);
-    col += uSunColor * pow(sun, 26.0) * 0.9;
+    col += uSunColor * pow(sun, 26.0) * 0.9 * (1.0 - uNight * 0.85);
     col += uSunColor * pow(sun, 4.0) * 0.16 * (1.0 - uNight);
 
-    // Estrellas de noche.
+    vec3 md = normalize(uMoon);
+    float moon = max(dot(d, md), 0.0);
+    col += vec3(0.86, 0.91, 1.0) * pow(moon, 90.0) * uNight * 1.6;
+    col += vec3(0.45, 0.55, 0.75) * pow(moon, 8.0) * uNight * 0.28;
+
     if (uNight > 0.05 && d.y > 0.02) {
       vec3 q = floor(d * 190.0);
       float s = step(0.9975, hash(q));
-      col += vec3(s) * uNight * (0.6 + 0.4 * hash(q + 3.0));
+      col += vec3(s) * uNight * (0.55 + 0.45 * hash(q + 3.0));
     }
     gl_FragColor = vec4(col, 1.0);
     #include <colorspace_fragment>
@@ -222,6 +233,7 @@ export function createSkyMaterial() {
     uHorizon: { value: new THREE.Color(0xc3dced) },
     uSun: { value: new THREE.Vector3(0.4, 0.8, 0.4) },
     uSunColor: { value: new THREE.Color(0xfffaf0) },
+    uMoon: { value: new THREE.Vector3(0.3, 0.7, -0.4) },
     uNight: { value: 0 },
   };
   const material = new THREE.ShaderMaterial({

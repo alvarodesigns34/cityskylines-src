@@ -6,7 +6,7 @@ import { sim, useGame } from "../store";
 import { CameraRig } from "./CameraRig";
 import { skyFor } from "./daynight";
 import { Buildings, Roads, StreetLamps, Vegetation } from "./layers/City";
-import { Smoke, Vehicles } from "./layers/Effects";
+import { Rain, Smoke, Vehicles } from "./layers/Effects";
 import { DataOverlay, Ghost, Selection, ZonePlates } from "./layers/Overlays";
 import { Sky, Terrain, Water } from "./layers/Terrain";
 import { cityUniforms } from "./materials";
@@ -53,6 +53,7 @@ function SceneRoot({ interactive }: { interactive: boolean }) {
           <Buildings />
           <Vehicles />
           <Smoke />
+          <Rain />
           {interactive ? <ZonePlates /> : null}
           {interactive ? <DataOverlay /> : null}
           {interactive ? <Ghost /> : null}
@@ -96,8 +97,11 @@ function SimTicker({ interactive }: { interactive: boolean }) {
 
     sim.step(interactive ? dt : dt * 0.35);
     // Ventanas y farolas siguen la hora del simulador, no el reloj real.
-    cityUniforms.uNight.value = skyFor(sim.hour).night;
+    const sky = skyFor(sim.hour);
+    cityUniforms.uNight.value = sky.night;
+    cityUniforms.uRain.value = sim.rain;
     cityUniforms.uTime.value += dt;
+    gl.toneMappingExposure = 1.08 + sky.night * 0.22;
 
     snapAcc.current += dt;
     if (snapAcc.current > 0.25) {

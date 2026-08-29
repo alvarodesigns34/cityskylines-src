@@ -163,6 +163,7 @@ export function updatePopulation(sim: CitySim) {
   happy -= clamp01(sim.garbageBacklog / Math.max(80, sim.pop * 0.8)) * 30;
   const avgTax = (sim.taxR + sim.taxC + sim.taxI) / 3;
   happy -= (avgTax - 0.11) * 180;
+  happy -= sim.rain * 4;
   sim.happiness = Math.max(3, Math.min(99, happy));
 }
 

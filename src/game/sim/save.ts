@@ -1,4 +1,4 @@
-import type { HistoryPoint } from "./types";
+import type { HistoryPoint, Policies } from "./types";
 
 export const SAVE_VERSION = 2;
 export const SAVE_KEY = "skyline-mini-save-v2";
@@ -38,6 +38,8 @@ export interface SaveBlob {
   grid: Record<string, string | number>;
   buildings: SavedBuilding[];
   history: HistoryPoint[];
+  rain?: number;
+  policies?: Partial<Policies>;
 }
 
 export function writeSave(blob: SaveBlob): boolean {

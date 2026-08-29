@@ -41,6 +41,7 @@ export function Inspector() {
     }
     if (info.pollution > 0.35) problems.push("aire muy contaminado");
     if (info.noise > 0.5) problems.push("demasiado ruido");
+    if (!b && info.demand < 0.12) problems.push("demanda baja");
   }
 
   return (
@@ -100,6 +101,8 @@ export function Inspector() {
           <AlertTriangle className="mt-px size-3 shrink-0" />
           <span>No prospera: {problems.join(", ")}.</span>
         </p>
+      ) : !b && info.zone !== "none" ? (
+        <p className="mt-2 text-[11px] leading-relaxed text-ok">Parcela lista: espera a que crezca.</p>
       ) : null}
     </div>
   );

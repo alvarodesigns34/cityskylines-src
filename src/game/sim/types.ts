@@ -1,11 +1,12 @@
 /** Lado del mapa en casillas. */
 export const N = 64;
-/** Ticks de simulación por día (uno cada 30 min de juego). */
-export const TICKS_PER_DAY = 48;
+/** Ticks de simulación por día. A 1× un día dura ~60 s (antes ~4 s). */
+export const TICKS_PER_DAY = 720;
 /** Paso fijo de simulación en segundos reales. */
 export const SIM_DT = 1 / 12;
 /** Multiplicador de tiempo por nivel de velocidad. */
 export const SPEEDS = [0, 1, 3, 7] as const;
+
 
 export type Zone = "none" | "R" | "C" | "I";
 export type Density = "low" | "high";
@@ -28,6 +29,7 @@ export type ServiceKind = (typeof SERVICES)[number];
 export type Tool =
   | "select"
   | "bulldoze"
+  | "tree-plant"
   | "road-street"
   | "road-avenue"
   | "road-highway"
@@ -38,6 +40,23 @@ export type Tool =
   | "zone-c-high"
   | "zone-i-high"
   | `build:${string}`;
+
+export type PolicyId = "cleanIndustry" | "housingGrant" | "overtime";
+
+export interface Policies {
+  /** Industria más limpia: menos humo, menos demanda industrial, cuesta dinero. */
+  cleanIndustry: boolean;
+  /** Ayuda a la vivienda: sube la demanda residencial. */
+  housingGrant: boolean;
+  /** Turno extra de recogida: más capacidad de basura. */
+  overtime: boolean;
+}
+
+export const DEFAULT_POLICIES: Policies = {
+  cleanIndustry: false,
+  housingGrant: false,
+  overtime: false,
+};
 
 export type OverlayKind =
   | "none"
@@ -167,6 +186,9 @@ export interface Snapshot {
   notices: Notice[];
   bankrupt: boolean;
   history: HistoryPoint[];
+
+  rain: number;
+  policies: Policies;
 }
 
 export interface HistoryPoint {

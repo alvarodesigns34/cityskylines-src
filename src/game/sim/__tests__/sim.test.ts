@@ -196,7 +196,7 @@ test("el presupuesto responde a los impuestos", () => {
   sim.taxR = 0.22;
   sim.taxC = 0.22;
   sim.taxI = 0.22;
-  run(sim, 120);
+  run(sim, 280);
   assert.ok(sim.lastIncome > base, "subir impuestos sube la recaudación inmediata");
   run(sim, 1200);
   assert.ok(sim.happiness < 62, "y hunde el ánimo con el tiempo");
@@ -343,4 +343,29 @@ test("los avisos caducan y se retiran al resolver el problema", () => {
   sim.tickCount += TICKS_PER_DAY * 4;
   sim.pruneNotices();
   assert.equal(sim.notices.some((n) => n.key === "welcome"), false, "un aviso viejo caduca");
+});
+
+test("plantar un árbol y las políticas sobreviven al guardado", () => {
+  const sim = new CitySim(SEED);
+  let planted = false;
+  for (let z = 0; z < N && !planted; z++) {
+    for (let x = 0; x < N; x++) {
+      if (sim.canPlace("tree-plant", x, z).ok) {
+        planted = sim.applyTool("tree-plant", x, z);
+        break;
+      }
+    }
+  }
+  assert.ok(planted, "hay suelo para un árbol");
+  sim.policies.housingGrant = true;
+  sim.policies.cleanIndustry = true;
+  sim.rain = 0.7;
+  const loaded = CitySim.fromSave(JSON.parse(JSON.stringify(sim.toSave())));
+  assert.ok(loaded);
+  assert.equal(loaded!.policies.housingGrant, true);
+  assert.equal(loaded!.policies.cleanIndustry, true);
+  assert.ok((loaded!.rain ?? 0) > 0.6);
+  let trees = 0;
+  for (let i = 0; i < N * N; i++) if (loaded!.grid.tree[i]) trees++;
+  assert.ok(trees >= 1, "el árbol plantado permanece");
 });

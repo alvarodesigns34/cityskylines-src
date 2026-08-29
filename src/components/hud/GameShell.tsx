@@ -163,6 +163,7 @@ function PlayHud() {
             <p className="font-display text-base leading-none text-fg">{snapshot.name}</p>
             <p className="mt-0.5 text-[11px] text-muted tabular-nums">
               {snapshot.tierName} · Día {snapshot.day} · {formatHour(snapshot.hour)}
+              {snapshot.rain > 0.35 ? " · lluvia" : snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
             </p>
           </div>
           <Chip icon={<Users className="size-3.5 text-zone-r" />} value={num(snapshot.pop)} label="hab." />
@@ -422,6 +423,11 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             Los colegios elevan el nivel formativo, y sin él las oficinas no encuentran trabajadores cualificados.
           </li>
           <li>Vigila la basura, el paro y los atascos. Y no dejes barrios sin bomberos.</li>
+          <li>
+            Planta <strong>árboles</strong> para limpiar el aire y subir el valor del suelo. En Presupuesto hay
+            políticas: ayuda a la vivienda, industria limpia y turno extra de basura.
+          </li>
+          <li>Un día dura cerca de un minuto a velocidad 1×. De noche la luna ilumina la ciudad.</li>
         </ol>
         <p className="mt-4 text-xs leading-relaxed text-faint">
           WASD mover · Q/E girar · T/G inclinar · rueda o R/F zoom · botón derecho orbitar · 1–9 herramientas ·
