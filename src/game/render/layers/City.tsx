@@ -8,7 +8,7 @@ import { sim } from "../../store";
 import { buildingGeometry, lodGeometry, variantsFor } from "../geom/buildings";
 import { grassGeometry, lampGeometry, rockGeometry, treeGeometry } from "../geom/props";
 import { bridgeGeometry, roadGeometry } from "../geom/roads";
-import { createCityMaterial, createFoliageMaterial } from "../materials";
+import { createCityMaterial, createFoliageMaterial, createRoadMaterial } from "../materials";
 import { useSimVersion } from "../useSimVersion";
 import { viewState, viewTarget } from "../viewTarget";
 
@@ -75,7 +75,8 @@ function InstancedBucket({
 
 export function Roads() {
   const rev = useSimVersion((s) => s.roadsVersion);
-  const material = useCityMaterial();
+  const material = useMemo(() => createRoadMaterial(), []);
+  useEffect(() => () => material.dispose(), [material]);
 
   const buckets = useMemo(() => {
     const map = new Map<string, Bucket>();

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getCityTextures } from "./textures";
 
 /** Uniformes compartidos por todos los materiales de ciudad. */
 export const cityUniforms = {
@@ -29,17 +30,53 @@ const CITY_GLSL = {
          uniform vec3 uLampColor;
          uniform float uRain;
          uniform float uTime;
+         uniform sampler2D uWallTex;
+         uniform sampler2D uRoofTex;
          varying float vEmis;
          varying vec3 vWorldPos;
          varying vec3 vWorldN;
-         float hash12(vec2 p) {
-           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+         vec3 gTriColor;
+         float gTriLum;
+         // Proyección triplanar: cada textura se pega sobre el eje al que mejor mira la cara
+         // (paredes en las dos proyecciones verticales, tejado/planta en la horizontal) y se
+         // funden por lo alineada que esté la normal con cada eje. Sin UV, funciona igual en
+         // una caja que en un tejado a dos aguas.
+         vec3 triplanar(sampler2D wallTex, sampler2D roofTex, vec3 p, vec3 n, float scale) {
+           vec3 bw = abs(n);
+           bw = bw / max(bw.x + bw.y + bw.z, 1e-4);
+           vec3 cx = texture2D(wallTex, p.zy * scale).rgb;
+           vec3 cz = texture2D(wallTex, p.xy * scale).rgb;
+           vec3 cy = texture2D(roofTex, p.xz * scale).rgb;
+           return cx * bw.x + cy * bw.y + cz * bw.z;
+         }
+         // Bump sin UV ni tangentes (Mikkelsen, "Bump Mapping Unparametrized Surfaces on
+         // the GPU"): la altura sale de la luminancia de la textura real (juntas de panel,
+         // solapes de teja), no de ruido aislado, así que el relieve tiene la misma
+         // estructura que se ve en el color en vez de parecer estática de televisión. El
+         // gradiente se mide en espacio de vista, que es donde ya vive la normal aquí.
+         vec3 bumpedNormal(vec3 N, vec3 viewPos, float hx, float hy, float faceDir, float strength) {
+           vec3 sigmaX = dFdx(viewPos);
+           vec3 sigmaY = dFdy(viewPos);
+           vec3 r1 = cross(sigmaY, N);
+           vec3 r2 = cross(N, sigmaX);
+           float det = dot(sigmaX, r1) * faceDir;
+           vec3 grad = sign(det) * (hx * strength * r1 + hy * strength * r2);
+           return normalize(abs(det) * N - grad);
          }`,
   colorFrag: `#include <color_fragment>
+         // La muestra triplanar se calcula aquí, no en normal_fragment_maps: ese chunk se
+         // ejecuta DESPUÉS de color_fragment en el shader estándar de three.js, así que si se
+         // calculaba allí, este multiplicador de color leía gTriLum sin inicializar (0.0) y la
+         // textura nunca llegaba al color — todo lo que se veía era el brillo especular sobre
+         // el bump, de ahí el aspecto de estática. Se calcula una vez aquí y se reutiliza abajo.
+         gTriColor = triplanar(uWallTex, uRoofTex, vWorldPos, vWorldN, 0.62);
+         gTriLum = dot(gTriColor, vec3(0.333));
          float ao = mix(0.58, 1.0, pow(clamp(vWorldN.y * 0.55 + 0.45, 0.0, 1.0), 0.75));
-         float n = hash12(floor(vWorldPos.xz * 7.0));
-         float n2 = hash12(vWorldPos.xz * 1.13);
-         diffuseColor.rgb *= ao * (0.92 + n * 0.1 + n2 * 0.05);
+         // La textura ya trae su propio contraste (juntas, tejas, áridos): se aplica como
+         // multiplicador de valor sobre el color de vértice, que sigue dando la paleta.
+         // Los cristales (vEmis alto) se quedan sin ella para que el vidrio siga liso.
+         float texAmt = 1.0 - smoothstep(0.15, 0.7, vEmis);
+         diffuseColor.rgb *= ao * mix(1.0, 0.62 + gTriLum * 0.66, texAmt);
          float wet = clamp(uRain * 0.7 + uNight * 0.1, 0.0, 0.75);
          diffuseColor.rgb *= 1.0 - wet * 0.18;
          vec3 viewDir = normalize(cameraPosition - vWorldPos);
@@ -47,6 +84,7 @@ const CITY_GLSL = {
          float rim = pow(1.0 - ndv, 2.8);
          diffuseColor.rgb += vec3(0.55, 0.62, 0.78) * rim * (0.05 + uNight * 0.08);`,
   roughnessFrag: `#include <roughnessmap_fragment>
+         roughnessFactor -= (gTriLum - 0.5) * 0.1;
          roughnessFactor = mix(roughnessFactor, 0.14, clamp(uRain * 0.72 + uNight * 0.1, 0.0, 0.78));
          roughnessFactor = mix(roughnessFactor, 0.16, smoothstep(0.12, 0.7, vEmis));`,
   metalFrag: `#include <metalnessmap_fragment>
@@ -60,11 +98,22 @@ const CITY_GLSL = {
          diffuseColor.rgb = mix(diffuseColor.rgb, warm * 0.55, lit * 0.38);`,
 };
 
-function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind = false) {
+interface CityShaderTex {
+  wall: THREE.Texture;
+  roof: THREE.Texture;
+}
+
+function patchCityShader(
+  shader: THREE.WebGLProgramParametersWithUniforms,
+  wind = false,
+  tex: CityShaderTex = getCityTextures(),
+) {
   shader.uniforms.uNight = cityUniforms.uNight;
   shader.uniforms.uLampColor = cityUniforms.uLampColor;
   shader.uniforms.uRain = cityUniforms.uRain;
   shader.uniforms.uTime = cityUniforms.uTime;
+  shader.uniforms.uWallTex = { value: tex.wall };
+  shader.uniforms.uRoofTex = { value: tex.roof };
   const begin = wind
     ? `#include <begin_vertex>
          vEmis = aEmis;
@@ -87,6 +136,19 @@ function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind 
     .replace("#include <project_vertex>", CITY_GLSL.projectVertex);
   shader.fragmentShader = shader.fragmentShader
     .replace("#include <common>", CITY_GLSL.fragCommon)
+    .replace(
+      "#include <normal_fragment_maps>",
+      `#include <normal_fragment_maps>
+         {
+           // gTriColor/gTriLum ya se calcularon en color_fragment (ver colorFrag arriba);
+           // reutilizarlos aquí evita una segunda muestra triplanar.
+           float bhx = dFdx(gTriLum);
+           float bhy = dFdy(gTriLum);
+           // Los cristales quedan lisos (vEmis alto): un vidrio rugoso no parece vidrio.
+           float bumpAmt = mix(1.05, 0.12, smoothstep(0.15, 0.7, vEmis));
+           normal = bumpedNormal(normal, -vViewPosition, bhx, bhy, faceDirection, bumpAmt);
+         }`,
+    )
     .replace("#include <color_fragment>", CITY_GLSL.colorFrag)
     .replace("#include <roughnessmap_fragment>", CITY_GLSL.roughnessFrag)
     .replace("#include <metalnessmap_fragment>", CITY_GLSL.metalFrag)
@@ -110,6 +172,20 @@ export function createCityMaterial(params: THREE.MeshStandardMaterialParameters 
   });
   mat.onBeforeCompile = (shader) => patchCityShader(shader, false);
   mat.customProgramCacheKey = () => "city-pbr-v3";
+  return mat;
+}
+
+/** Calzada: la misma base PBR pero con textura de asfalto en vez de fachada. */
+export function createRoadMaterial(params: THREE.MeshStandardMaterialParameters = {}) {
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.82,
+    metalness: 0.02,
+    ...params,
+  });
+  const tex = getCityTextures();
+  mat.onBeforeCompile = (shader) => patchCityShader(shader, false, { wall: tex.asphalt, roof: tex.asphalt });
+  mat.customProgramCacheKey = () => "road-pbr-v1";
   return mat;
 }
 
@@ -137,6 +213,7 @@ export function createTerrainMaterial() {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uNight = cityUniforms.uNight;
     shader.uniforms.uRain = cityUniforms.uRain;
+    shader.uniforms.uGroundTex = { value: getCityTextures().ground };
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -161,6 +238,7 @@ export function createTerrainMaterial() {
         `#include <common>
          uniform float uNight;
          uniform float uRain;
+         uniform sampler2D uGroundTex;
          varying vec3 vWorldPos;
          varying vec3 vWorldN;
          float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -177,23 +255,61 @@ export function createTerrainMaterial() {
            float v = 0.0; float a = 0.5;
            for (int i = 0; i < 4; i++) { v += a * noise(p); p = p * 2.07 + 11.3; a *= 0.5; }
            return v;
+         }
+         vec3 gGroundTex;
+         float gGroundLum;
+         // Proyección triplanar (igual que en el material de ciudad): imprescindible aquí
+         // porque el terreno no es solo horizontal — un talud o una pendiente pronunciada
+         // con textura plana en XZ se ve estirada y con muaré, como una alfombra mal puesta.
+         vec3 triGround(sampler2D tex, vec3 p, vec3 n, float scale) {
+           vec3 bw = abs(n);
+           bw = bw / max(bw.x + bw.y + bw.z, 1e-4);
+           vec3 cx = texture2D(tex, p.zy * scale).rgb;
+           vec3 cz = texture2D(tex, p.xy * scale).rgb;
+           vec3 cy = texture2D(tex, p.xz * scale).rgb;
+           return cx * bw.x + cy * bw.y + cz * bw.z;
+         }
+         // Mismo bump por gradiente de superficie que el material de ciudad (ver
+         // bumpedNormal ahí), pero con la altura sacada de la textura de tierra real en vez
+         // de ruido aislado: sin estructura reconocible, de cerca se leía como estática.
+         vec3 terrainBump(vec3 N, vec3 viewPos, float hx, float hy, float faceDir, float strength) {
+           vec3 sigmaX = dFdx(viewPos);
+           vec3 sigmaY = dFdy(viewPos);
+           vec3 r1 = cross(sigmaY, N);
+           vec3 r2 = cross(N, sigmaX);
+           float det = dot(sigmaX, r1) * faceDir;
+           vec3 grad = sign(det) * (hx * strength * r1 + hy * strength * r2);
+           return normalize(abs(det) * N - grad);
+         }`,
+      )
+      .replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+         {
+           // gGroundTex/gGroundLum ya se calcularon en color_fragment (ver más abajo);
+           // color_fragment se ejecuta antes que este chunk en el shader estándar de three.js,
+           // así que calcularlo aquí por primera vez lo dejaría sin inicializar en el color.
+           float thx = dFdx(gGroundLum);
+           float thy = dFdy(gGroundLum);
+           normal = terrainBump(normal, -vViewPosition, thx, thy, faceDirection, 0.9);
          }`,
       )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
+         // Dos escalas de la misma textura (mancha grande + brizna fina) evitan el
+         // patrón repetido que delata a una textura tileada de cerca.
+         gGroundTex = triGround(uGroundTex, vWorldPos, vWorldN, 0.9) * 0.6
+                    + triGround(uGroundTex, vWorldPos + 0.5, vWorldN, 3.1) * 0.4;
+         gGroundLum = dot(gGroundTex, vec3(0.333));
          float n = fbm(vWorldPos.xz * 1.55);
          float n2 = fbm(vWorldPos.xz * 7.4 + 9.0);
-         float n3 = noise(vWorldPos.xz * 28.0);
-         // Cuarta capa de altísima frecuencia: es lo que rompe el aspecto "pintura plana" al
-         // acercarse, sin necesidad de una textura real.
-         float n4 = noise(vWorldPos.xz * 74.0 + 3.0) * 0.5 + noise(vWorldPos.xz * 140.0 - 5.0) * 0.5;
          vec3 lush = vec3(0.24, 0.45, 0.17);
          vec3 dry = vec3(0.52, 0.49, 0.25);
          vec3 clover = vec3(0.2, 0.39, 0.19);
          float dryness = smoothstep(0.34, 0.76, n);
          diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.34);
-         diffuseColor.rgb *= 0.82 + n2 * 0.2 + n3 * 0.1 + (n4 - 0.5) * 0.1;
+         diffuseColor.rgb *= 0.6 + gGroundLum * 0.75;
          float ao = mix(0.68, 1.0, clamp(vWorldN.y, 0.0, 1.0));
          diffuseColor.rgb *= ao;
          float wet = clamp(uRain, 0.0, 1.0);
@@ -204,10 +320,10 @@ export function createTerrainMaterial() {
         "#include <roughnessmap_fragment>",
         `#include <roughnessmap_fragment>
          roughnessFactor = mix(roughnessFactor, 0.32, clamp(uRain * 0.6, 0.0, 0.6));
-         roughnessFactor -= n4 * 0.08;`,
+         roughnessFactor -= (gGroundLum - 0.5) * 0.16;`,
       );
   };
-  mat.customProgramCacheKey = () => "terrain-noise-v1";
+  mat.customProgramCacheKey = () => "terrain-tex-v1";
   return mat;
 }
 
