@@ -28,9 +28,12 @@ export function updateDemand(sim: CitySim) {
   const jobSurplus = (sim.jobs - workers) / Math.max(25, workers);
   // "Queda sitio" se mide por lo llenos que están los edificios existentes, no por la
   // capacidad nominal: un bloque medio vacío frena la demanda mucho antes que uno lleno.
-  const slackR = clamp01((0.9 - sim.occupancyR) * 2.2);
-  const slackC = clamp01((0.88 - sim.occupancyC) * 2);
-  const slackI = clamp01((0.88 - sim.occupancyI) * 2);
+  // Si el vacío es por falta de luz o agua, no hay que matar la demanda: cuando el jugador
+  // coloque otro depósito, la ciudad tiene que poder recuperarse.
+  const serviceStress = Math.min(sim.powerRatio, sim.waterRatio);
+  const slackR = clamp01((0.9 - sim.occupancyR) * 2.2) * serviceStress;
+  const slackC = clamp01((0.88 - sim.occupancyC) * 2) * serviceStress;
+  const slackI = clamp01((0.88 - sim.occupancyI) * 2) * serviceStress;
 
   let dR = 0.34 + jobSurplus * 0.7 - slackR * 0.5 + (sim.happiness - 52) / 260;
   // Reparto objetivo del empleo: comercio ~26% de la población, industria ~32%.
@@ -132,13 +135,13 @@ export function updateUpgrades(sim: CitySim) {
     if (sim.tier < nd.level - 1) continue;
     const lv = g.landValue[i]!;
     // Subir de nivel exige valor de suelo, bienestar y demanda sostenida.
-    const need = 0.1 + nd.level * 0.09;
-    if (lv < need || b.wellbeing < 0.34) continue;
+    const need = 0.08 + nd.level * 0.08;
+    if (lv < need || b.wellbeing < 0.32) continue;
     // La subida de nivel la manda el valor del suelo, no la demanda: en una ciudad llena la
     // demanda es cero por definición y la única forma de crecer es densificar.
     const demand = b.zone === "R" ? sim.demandR : b.zone === "C" ? sim.demandC : sim.demandI;
-    if (demand < 0.02 && b.occupancy < 0.9) continue;
-    if (sim.rand() > 0.016 * (0.25 + lv * 1.5)) continue;
+    if (demand < 0.02 && b.occupancy < 0.88) continue;
+    if (sim.rand() > 0.026 * (0.3 + lv * 1.5)) continue;
     tryReplace(sim, k, next);
   }
 }

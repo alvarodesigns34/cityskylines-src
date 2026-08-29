@@ -159,28 +159,48 @@ export function generateMap(seed: number): MapGen {
     }
   }
   const hz = bestZ;
-  const runway = 8;
-  // Explanada bajo la autovía para que entre sin rampas imposibles.
+  const runway = 10;
+  // Explanada ancha bajo la autovía. La pendiente de cada casilla se calcula con los
+  // vecinos, así que hay que aplanar un bermón, no solo las dos filas de asfalto:
+  // si no, en semillas con sierra o río cerca la entrada queda impracticable.
   let base = 0;
-  for (let x = 0; x < runway; x++) base += Math.max(g.height[idx(x, hz)]!, WATER_LEVEL + 0.5);
+  for (let x = 0; x < runway; x++) base += Math.max(g.height[idx(x, hz)]!, WATER_LEVEL + 0.55);
   base /= runway;
-  for (let x = 0; x < runway; x++) {
-    for (let dz = -2; dz <= 3; dz++) {
+  base = Math.max(WATER_LEVEL + 0.5, Math.min(base, WATER_LEVEL + 2.4));
+  for (let x = 0; x < runway + 5; x++) {
+    for (let dz = -4; dz <= 5; dz++) {
       const z = hz + dz;
       const i = g.at(x, z);
       if (i < 0) continue;
-      const blend = smoothstep(3, 0, Math.abs(dz)) * smoothstep(runway + 3, runway - 2, x);
+      const radial = Math.max(Math.abs(dz) / 4.2, Math.max(0, x - (runway - 1)) / 5);
+      const blend = smoothstep(1.05, 0.12, radial);
       g.height[i] = g.height[i]! * (1 - blend) + base * blend;
-      if (blend > 0.5 && g.terrain[i] === TERRAIN.water) g.terrain[i] = TERRAIN.sand;
+      if (blend > 0.4 && g.terrain[i] === TERRAIN.water) g.terrain[i] = TERRAIN.sand;
     }
   }
   for (let x = 0; x < runway; x++) {
     for (const z of [hz, hz + 1]) {
       const i = g.at(x, z);
       if (i < 0) continue;
+      g.height[i] = base;
       g.road[i] = ROAD.highway;
       g.tree[i] = 0;
       g.terrain[i] = g.terrain[i] === TERRAIN.water ? TERRAIN.sand : g.terrain[i]!;
+    }
+  }
+  g.recomputeSlope();
+  // Segunda pasada: si algún vecino todavía tira de la pendiente, se aplana más.
+  for (let x = 0; x < runway; x++) {
+    for (const z of [hz, hz + 1]) {
+      const i = g.at(x, z);
+      if (i < 0) continue;
+      if (g.slope[i]! > 0.38) {
+        for (let dz = -2; dz <= 3; dz++) {
+          const j = g.at(x, z + dz);
+          if (j >= 0) g.height[j] = g.height[j]! * 0.25 + base * 0.75;
+        }
+        g.height[i] = base;
+      }
     }
   }
   g.recomputeSlope();

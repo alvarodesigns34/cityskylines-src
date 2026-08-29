@@ -94,6 +94,8 @@ export interface Vehicle {
 
 export interface Notice {
   id: string;
+  /** Clave estable para caducar o retirar el aviso cuando se resuelve. */
+  key: string;
   text: string;
   kind: "info" | "warn" | "good";
   at: number;

@@ -278,3 +278,69 @@ test("un día dura TICKS_PER_DAY ticks y el presupuesto se resuelve una vez al d
   assert.equal(sim.history[days - 1]!.day, sim.day);
   assert.equal(sim.tickCount % TICKS_PER_DAY === 0 ? 0 : sim.tickCount % TICKS_PER_DAY > 0, true);
 });
+
+test("la explanada de la autovía queda transitable en muchas semillas", () => {
+  let worst = 0;
+  let bad = 0;
+  for (let s = 0; s < 40; s++) {
+    const seed = (s * 7919 + 13) >>> 0;
+    const { grid, entry } = generateMap(seed);
+    let maxSlope = 0;
+    for (let i = 0; i < N * N; i++) {
+      if (grid.road[i] === ROAD.highway) maxSlope = Math.max(maxSlope, grid.slope[i]!);
+    }
+    worst = Math.max(worst, maxSlope);
+    if (maxSlope > 0.52) bad++;
+    assert.ok(entry.x >= 6, "la autovía entra lo bastante");
+  }
+  assert.equal(bad, 0, `autovía empinada en ${bad}/40 semillas, peor pendiente ${worst.toFixed(2)}`);
+});
+
+test("guardar conserva la orientación 0 (fachada al norte)", () => {
+  const sim = seededCity();
+  run(sim, 400);
+  const target = sim.buildings.find((b) => b.rot === 0);
+  assert.ok(target, "hace falta un edificio orientado al norte");
+  target!.rot = 0;
+  const blob = JSON.parse(JSON.stringify(sim.toSave()));
+  const loaded = CitySim.fromSave(blob);
+  assert.ok(loaded);
+  const same = loaded!.buildings.find((b) => b.id === target!.id);
+  assert.ok(same);
+  assert.equal(same!.rot, 0);
+});
+
+test("el morro del vehículo apunta al destino, no al revés", () => {
+  const sim = seededCity();
+  run(sim, 900);
+  assert.ok(sim.vehicles.length > 0, "hay tráfico visible");
+  let ok = 0;
+  for (const v of sim.vehicles) {
+    const a = v.path[v.i]!;
+    const b = v.path[Math.min(v.i + 1, v.path.length - 1)]!;
+    const dx = (b % N) - (a % N);
+    const dz = ((b / N) | 0) - ((a / N) | 0);
+    if (dx === 0 && dz === 0) continue;
+    const target = Math.atan2(dx, dz) + Math.PI;
+    let d = Math.abs(v.yaw - target);
+    while (d > Math.PI) d = Math.abs(d - Math.PI * 2);
+    if (d < 0.6) ok++;
+  }
+  assert.ok(ok >= Math.max(1, sim.vehicles.length - 2), `morros alineados: ${ok}/${sim.vehicles.length}`);
+});
+
+test("los avisos caducan y se retiran al resolver el problema", () => {
+  const sim = new CitySim(1);
+  sim.pushNotice("water", "El agua no llega a todos: amplía el suministro.", "warn");
+  sim.pushNotice("edu", "Sin colegios no habrá trabajadores cualificados para oficinas.", "info");
+  assert.ok(sim.notices.some((n) => n.key === "water"));
+  sim.waterRatio = 1;
+  sim.serviceLevel.education = 0.6;
+  sim.pruneNotices();
+  assert.equal(sim.notices.some((n) => n.key === "water"), false, "el aviso de agua se retira al resolverlo");
+  assert.equal(sim.notices.some((n) => n.key === "edu"), false, "el aviso de colegio se retira con cobertura");
+  sim.pushNotice("welcome", "Prolonga la autovía con calles, zonifica junto a ellas y engancha luz y agua.", "info");
+  sim.tickCount += TICKS_PER_DAY * 4;
+  sim.pruneNotices();
+  assert.equal(sim.notices.some((n) => n.key === "welcome"), false, "un aviso viejo caduca");
+});

@@ -72,7 +72,7 @@ export function updateEnvironment(sim: CitySim) {
       lv[i] = 0;
       continue;
     }
-    let v = 0.16 + g.scenery[i]! * 0.34;
+    let v = 0.2 + g.scenery[i]! * 0.34;
     v += edu[i]! * 0.11;
     v += hea[i]! * 0.09;
     v += pol2[i]! * 0.13;

@@ -63,10 +63,12 @@ function exposeQa() {
     },
     tick: (n: number) => {
       const wasPaused = city.paused;
+      const wasSpeed = city.speed;
       city.paused = false;
       city.speed = 3;
       for (let i = 0; i < n; i++) city.step(0.1);
       city.paused = wasPaused;
+      city.speed = wasSpeed;
       useGame.getState().pullSnapshot();
     },
     get money() {

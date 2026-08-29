@@ -249,7 +249,10 @@ export class CitySim {
       updateEnvironment(this);
       this.fieldsVersion++;
     }
-    if (this.tickCount % 40 === 0) this.advise();
+    if (this.tickCount % 40 === 0) {
+      this.pruneNotices();
+      this.advise();
+    }
   }
 
   /** Recalcula todo de golpe (arranque, carga, cambio grande). */
@@ -523,9 +526,29 @@ export class CitySim {
     const last = this.noticeCooldown.get(key) ?? -99999;
     if (this.tickCount - last < TICKS_PER_DAY * 2 && key !== "welcome") return;
     this.noticeCooldown.set(key, this.tickCount);
-    this.notices = this.notices.filter((n) => n.text !== text);
-    this.notices.unshift({ id: `n${noticeSeq++}`, text, kind, at: this.tickCount });
+    this.notices = this.notices.filter((n) => n.key !== key && n.text !== text);
+    this.notices.unshift({ id: `n${noticeSeq++}`, key, text, kind, at: this.tickCount });
     if (this.notices.length > 5) this.notices.length = 5;
+  }
+
+  /** Retira avisos viejos y los que ya no aplican, para que el HUD no se quede anclado al día 1. */
+  pruneNotices() {
+    const ttl = TICKS_PER_DAY * 3;
+    const done = new Set<string>();
+    if (this.connectedCity) done.add("conn");
+    if (this.powerRatio >= 0.95) done.add("power");
+    if (this.waterRatio >= 0.95) done.add("water");
+    if (this.garbageRatio >= 0.9) done.add("garbage");
+    if ((this.serviceLevel.education ?? 0) >= 0.25) done.add("edu");
+    if ((this.serviceLevel.health ?? 0) >= 0.25) done.add("health");
+    if (this.congestion <= 0.45) done.add("jam");
+    if (this.unemployment <= 0.2) done.add("unemp");
+    if (this.avgPollution <= 0.35) done.add("pollution");
+    this.notices = this.notices.filter((n) => {
+      if (this.tickCount - n.at >= ttl) return false;
+      if (n.key && done.has(n.key)) return false;
+      return true;
+    });
   }
 
   private advise() {
@@ -554,6 +577,7 @@ export class CitySim {
   // ------------------------------------------------------------------ snapshot
 
   snapshot(): Snapshot {
+    this.pruneNotices();
     const tier = TIERS[this.tier]!;
     const next = TIERS[this.tier + 1] ?? null;
     return {
@@ -720,7 +744,12 @@ export class CitySim {
     sim.hour = sim.dayFraction * 24;
     for (const k of SERVICES) sim.serviceLevel[k] = 0;
     sim.refreshAll();
-    for (const b of sim.buildings) b.rot = b.rot || facingRoad(sim.grid, b.x, b.z, b.w, b.d);
+    for (const b of sim.buildings) {
+      // 0 es una orientación válida (fachada al norte): no usar `||`.
+      if ((b.rot | 0) !== b.rot || b.rot < 0 || b.rot > 3) {
+        b.rot = facingRoad(sim.grid, b.x, b.z, b.w, b.d);
+      }
+    }
     sim.pushNotice("loaded", "Ciudad restaurada.", "good");
     return sim;
   }

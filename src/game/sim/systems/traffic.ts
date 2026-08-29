@@ -182,7 +182,7 @@ export function updateVehicles(sim: CitySim, dt: number) {
     const a = v.path[v.i]!;
     const b = v.path[v.i + 1];
     if (b === undefined) continue;
-    if (g.road[a] === ROAD.none || g.road[b] === ROAD.none) continue; // la calle se demió
+    if (g.road[a] === ROAD.none || g.road[b] === ROAD.none) continue; // la calle se demolió
     // La velocidad real cae con la congestión de la casilla que se pisa.
     const cls = g.road[b]!;
     const jam = Math.min(1, g.traffic[b]!);
