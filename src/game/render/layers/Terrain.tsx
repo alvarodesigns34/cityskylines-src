@@ -142,6 +142,7 @@ function buildDepthTexture(): THREE.DataTexture {
 
 const _shallowMix = new THREE.Color();
 const _rainFog = new THREE.Color(0x6a7484);
+const _lightDir = new THREE.Vector3();
 const _rainSky = new THREE.Color(0x5a6472);
 
 export function Water() {
@@ -235,12 +236,14 @@ export function Sky() {
       sun.target.position.set(tx, ty, tz);
       sun.target.updateMatrixWorld();
       const reach = Math.max(120, viewState.distance * 2.6);
-      const night = sky.night > 0.55;
-      const dir = night ? sky.moonDir : sky.sunDir;
-      sun.position.set(tx + dir.x * reach, ty + dir.y * reach + 8, tz + dir.z * reach);
-      sun.color.copy(night ? sky.moonColor : sky.sunColor);
-      sun.intensity = night ? sky.moonIntensity : sky.sunIntensity;
-      sun.castShadow = dir.y > 0.14;
+      // Mezcla continua sol→luna: un umbral duro hacía saltar posición, color e intensidad
+      // de golpe al cruzar night=0.55 (se notaba como un parpadeo en el atardecer).
+      const moonMix = THREE.MathUtils.smoothstep(sky.night, 0.35, 0.75);
+      _lightDir.copy(sky.sunDir).lerp(sky.moonDir, moonMix).normalize();
+      sun.position.set(tx + _lightDir.x * reach, ty + _lightDir.y * reach + 8, tz + _lightDir.z * reach);
+      sun.color.copy(sky.sunColor).lerp(sky.moonColor, moonMix);
+      sun.intensity = THREE.MathUtils.lerp(sky.sunIntensity, sky.moonIntensity, moonMix);
+      sun.castShadow = _lightDir.y > 0.1;
       sun.shadow.radius = 2.4;
       sun.shadow.blurSamples = 8;
       const half = THREE.MathUtils.clamp(viewState.distance * 1.05, 26, 95);
@@ -269,7 +272,9 @@ export function Sky() {
     }
     if (ambRef.current) {
       ambRef.current.color.copy(sky.ambientColor);
-      ambRef.current.intensity = 0.34 + sky.night * 0.3;
+      // De noche este relleno debe ser mínimo: la legibilidad la dan la luna, las farolas
+      // y las ventanas encendidas, no un ambiente plano que borra el contraste.
+      ambRef.current.intensity = 0.22 + sky.night * 0.06;
     }
   });
 

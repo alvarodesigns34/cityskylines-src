@@ -188,8 +188,8 @@ export function createTerrainMaterial() {
          vec3 lush = vec3(0.26, 0.46, 0.18);
          vec3 dry = vec3(0.50, 0.48, 0.26);
          vec3 clover = vec3(0.22, 0.40, 0.20);
-         float patch = smoothstep(0.36, 0.74, n);
-         diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, patch), 0.28);
+         float dryness = smoothstep(0.36, 0.74, n);
+         diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.28);
          diffuseColor.rgb *= 0.86 + n2 * 0.16 + n3 * 0.08;
          float ao = mix(0.74, 1.0, clamp(vWorldN.y, 0.0, 1.0));
          diffuseColor.rgb *= ao;
@@ -467,22 +467,29 @@ export function createSmokeMaterial() {
   return { material, uniforms };
 }
 
+/**
+ * Billboards orientados a cámara con silueta de nube por ruido: varios lóbulos ovalados que se
+ * funden con una caída de alfa muy suave. Sustituye a las esferas instanciadas de baja
+ * poligonización (visibles como blobs facetados con bordes duros al superponerse sin
+ * profundidad) por algo que de verdad parece una nube esponjosa desde cualquier ángulo.
+ */
 const cloudVertex = /* glsl */ `
-  varying vec3 vN;
-  varying vec3 vWorld;
+  attribute float aSeed;
+  varying vec2 vUv;
+  varying float vSeed;
   void main() {
-    vec4 local = vec4(position, 1.0);
-    #ifdef USE_INSTANCING
-      local = instanceMatrix * local;
-    #endif
-    vec4 world = modelMatrix * local;
-    vWorld = world.xyz;
-    vec3 n = normal;
-    #ifdef USE_INSTANCING
-      n = mat3(instanceMatrix) * n;
-    #endif
-    vN = normalize(mat3(modelMatrix) * n);
-    gl_Position = projectionMatrix * viewMatrix * world;
+    // Plano de 1×1: se usa como billboard, no como malla real, así que su posición local
+    // (−0.5..0.5) es directamente la coordenada de forma de la nube.
+    vUv = position.xy * 2.0;
+    vSeed = aSeed;
+    vec4 center = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    vec3 camRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+    vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+    mat4 m = instanceMatrix;
+    float sx = length(vec3(m[0][0], m[0][1], m[0][2]));
+    float sy = length(vec3(m[1][0], m[1][1], m[1][2]));
+    vec3 pos = center.xyz + camRight * position.x * sx + camUp * position.y * sy;
+    gl_Position = projectionMatrix * viewMatrix * vec4(pos, 1.0);
   }
 `;
 
@@ -490,12 +497,35 @@ const cloudFragment = /* glsl */ `
   uniform vec3 uColor;
   uniform float uOpacity;
   uniform float uNight;
-  varying vec3 vN;
-  varying vec3 vWorld;
+  varying vec2 vUv;
+  varying float vSeed;
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float noise(vec2 p) {
+    vec2 i = floor(p); vec2 f = fract(p);
+    float a = hash(i), b = hash(i + vec2(1.0, 0.0)), c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+  }
+
   void main() {
-    float fres = pow(1.0 - abs(dot(normalize(vN), normalize(cameraPosition - vWorld))), 1.6);
-    float alpha = (0.42 + fres * 0.4) * uOpacity;
-    vec3 col = mix(uColor, uColor * 0.35, uNight);
+    // Varios lóbulos redondeados desplazados: la silueta deja de ser una elipse perfecta.
+    vec2 p = vUv;
+    float base = 1.0 - length(p);
+    float lobes = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float fi = float(i);
+      vec2 off = vec2(sin(vSeed * 6.0 + fi * 2.1), cos(vSeed * 4.0 + fi * 1.7)) * 0.32;
+      lobes = max(lobes, 1.0 - length((p - off) * vec2(1.0, 1.35)));
+    }
+    float shape = max(base * 0.6, lobes);
+    float n = noise(p * 3.2 + vSeed * 11.0) * 0.5 + noise(p * 7.0 + vSeed * 5.0) * 0.5;
+    shape += (n - 0.5) * 0.22;
+    float alpha = smoothstep(0.02, 0.62, shape) * uOpacity;
+    if (alpha < 0.01) discard;
+    vec3 col = mix(uColor, uColor * 0.4, uNight);
+    // Sombra propia leve en la base del lóbulo para dar volumen sin luz real.
+    col *= 0.86 + 0.14 * smoothstep(-0.3, 0.5, p.y);
     gl_FragColor = vec4(col, alpha);
     #include <colorspace_fragment>
   }

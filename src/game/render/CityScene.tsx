@@ -10,6 +10,7 @@ import { Clouds, Rain, Smoke, Vehicles } from "./layers/Effects";
 import { DataOverlay, Ghost, Selection, ZonePlates } from "./layers/Overlays";
 import { Horizon, Sky, Terrain, Water } from "./layers/Terrain";
 import { cityUniforms } from "./materials";
+import { Bloom } from "./Bloom";
 
 export function CityCanvas({ interactive }: { interactive: boolean }) {
   const worldId = useGame((s) => s.worldId);
@@ -63,6 +64,7 @@ function SceneRoot({ interactive }: { interactive: boolean }) {
           {interactive ? <Selection /> : null}
         </group>
       ) : null}
+      <Bloom />
     </>
   );
 }

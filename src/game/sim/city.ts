@@ -968,6 +968,8 @@ export function createPreview(): CitySim {
   s.money = 900000;
   s.notices = [];
   s.speed = 1;
+  s.rain = 0;
+  s.rainTarget = 0;
   return s;
 }
 

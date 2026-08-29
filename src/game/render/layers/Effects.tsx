@@ -174,13 +174,13 @@ export function Rain() {
     }
     return s;
   }, []);
-  const geometry = useMemo(() => new THREE.BoxGeometry(0.022, 0.78, 0.022), []);
+  const geometry = useMemo(() => new THREE.CylinderGeometry(0.006, 0.006, 0.68, 3), []);
   const material = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: 0xc5d4e6,
+        color: 0xaebfd6,
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.22,
         depthWrite: false,
         toneMapped: false,
       }),
@@ -231,25 +231,35 @@ export function Rain() {
   );
 }
 
-const CLOUD_COUNT = 18;
+const CLOUD_COUNT = 22;
 const _cloudDummy = new THREE.Object3D();
 
-/** Nubes 3D bajas para dar paralaje; el cielo shader ya pinta el velo de fondo. */
+/**
+ * Cúmulos como billboards orientados a cámara (ver `createCloudMaterial`): cada uno es un
+ * plano con una silueta de nube generada por ruido en el propio shader, no una esfera de baja
+ * poligonización. Más barato de dibujar y sin las costuras duras que deja una malla real
+ * transparente al superponerse sin escritura de profundidad.
+ */
 export function Clouds() {
   const ref = useRef<THREE.InstancedMesh>(null);
   const { material, uniforms } = useMemo(() => createCloudMaterial(), []);
-  const geometry = useMemo(() => new THREE.SphereGeometry(1, 10, 7), []);
+  const geometry = useMemo(() => {
+    const g = new THREE.PlaneGeometry(1, 1);
+    const seeds = new Float32Array(CLOUD_COUNT);
+    for (let i = 0; i < CLOUD_COUNT; i++) seeds[i] = hash2(i, 53, 61) * 40;
+    g.setAttribute("aSeed", new THREE.InstancedBufferAttribute(seeds, 1));
+    return g;
+  }, []);
   const seeds = useMemo(() => {
-    const s: Array<{ a: number; r: number; y: number; sx: number; sy: number; sz: number; spin: number }> = [];
+    const s: Array<{ a: number; r: number; y: number; sx: number; sy: number; spin: number }> = [];
     for (let i = 0; i < CLOUD_COUNT; i++) {
       s.push({
         a: (i / CLOUD_COUNT) * Math.PI * 2 + hash2(i, 3, 5) * 0.7,
-        r: 18 + hash2(i, 7, 9) * 38,
-        y: 16 + hash2(i, 11, 13) * 14,
-        sx: 5.5 + hash2(i, 17, 19) * 7,
-        sy: 0.85 + hash2(i, 23, 29) * 0.7,
-        sz: 3.4 + hash2(i, 31, 37) * 4.2,
-        spin: 0.008 + hash2(i, 41, 43) * 0.012,
+        r: 20 + hash2(i, 7, 9) * 42,
+        y: 20 + hash2(i, 11, 13) * 16,
+        sx: 7 + hash2(i, 17, 19) * 9,
+        sy: 3.4 + hash2(i, 23, 29) * 3.4,
+        spin: 0.006 + hash2(i, 41, 43) * 0.01,
       });
     }
     return s;
@@ -268,13 +278,13 @@ export function Clouds() {
     const sky = skyFor(sim?.hour ?? 12);
     const rain = sim?.rain ?? 0;
     uniforms.uNight.value = sky.night;
-    uniforms.uOpacity.value = Math.max(0, 0.5 + rain * 0.22 - sky.night * 0.72);
+    uniforms.uOpacity.value = Math.max(0, 0.62 + rain * 0.2 - sky.night * 0.68);
     uniforms.uColor.value.setRGB(
       0.96 - rain * 0.16 - sky.night * 0.35,
       0.97 - rain * 0.14 - sky.night * 0.32,
       0.98 - rain * 0.1 - sky.night * 0.22,
     );
-    uniforms.uColor.value.lerp(sky.skyHorizon, 0.28);
+    uniforms.uColor.value.lerp(sky.skyHorizon, 0.22);
     mesh.visible = uniforms.uOpacity.value > 0.06;
     if (!mesh.visible) return;
     const cx = N / 2;
@@ -283,8 +293,8 @@ export function Clouds() {
       const c = seeds[i]!;
       c.a += c.spin * dt;
       _cloudDummy.position.set(cx + Math.cos(c.a) * c.r, c.y, cz + Math.sin(c.a) * c.r * 0.85);
-      _cloudDummy.rotation.set(0, c.a * 0.4, 0.08);
-      _cloudDummy.scale.set(c.sx, c.sy, c.sz);
+      _cloudDummy.rotation.set(0, 0, 0);
+      _cloudDummy.scale.set(c.sx, c.sy, 1);
       _cloudDummy.updateMatrix();
       mesh.setMatrixAt(i, _cloudDummy.matrix);
     }

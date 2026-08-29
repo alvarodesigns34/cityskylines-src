@@ -33,16 +33,17 @@ const KEYFRAMES: Array<{
   ground: number;
   water: number;
 }> = [
-  // Noche azulada, no un pozo negro: se tiene que leer el relieve y las farolas.
-  { h: 0, skyTop: 0x1c2c4e, skyHorizon: 0x3a4c6e, sun: 0xc5d4ee, sunI: 0.72, amb: 0x6a7ca0, ambI: 0.92, ground: 0x3a4556, water: 0x243a52 },
-  { h: 5, skyTop: 0x243658, skyHorizon: 0x5a4e72, sun: 0xb8a8d0, sunI: 0.78, amb: 0x6e7898, ambI: 0.9, ground: 0x3e4854, water: 0x2c4258 },
+  // Noche azul oscura con luz de luna real: se lee el relieve por las farolas y las
+  // ventanas encendidas (emisión por vértice), no porque el ambiente esté casi a media luz.
+  { h: 0, skyTop: 0x0a1428, skyHorizon: 0x1e2c48, sun: 0x9db4dc, sunI: 0.5, amb: 0x384660, ambI: 0.4, ground: 0x1c2432, water: 0x0e1e34 },
+  { h: 5, skyTop: 0x101c38, skyHorizon: 0x362f4c, sun: 0xa898c0, sunI: 0.55, amb: 0x3e4868, ambI: 0.42, ground: 0x212a3a, water: 0x14263e },
   { h: 6.6, skyTop: 0x3d6390, skyHorizon: 0xe0a184, sun: 0xffc9a0, sunI: 0.95, amb: 0x7d8fae, ambI: 0.68, ground: 0x4a4c46, water: 0x40607c },
   { h: 9, skyTop: 0x4e8fd0, skyHorizon: 0xc5dced, sun: 0xfff2d8, sunI: 2.25, amb: 0xa4c4de, ambI: 0.62, ground: 0x546348, water: 0x2f7aa0 },
   { h: 13, skyTop: 0x3f88d0, skyHorizon: 0xc8e2f2, sun: 0xfffaf2, sunI: 2.65, amb: 0xb0cfe8, ambI: 0.66, ground: 0x5a6a4a, water: 0x2a7eac },
   { h: 17, skyTop: 0x4e8ac8, skyHorizon: 0xd6ddd0, sun: 0xffe8b8, sunI: 2.15, amb: 0xa8c2d4, ambI: 0.6, ground: 0x586448, water: 0x31789c },
   { h: 19.4, skyTop: 0x3a5488, skyHorizon: 0xf09a68, sun: 0xffb07a, sunI: 0.95, amb: 0x8894b0, ambI: 0.72, ground: 0x4a4e52, water: 0x3d5570 },
-  { h: 21, skyTop: 0x223050, skyHorizon: 0x45506c, sun: 0xa8bbe0, sunI: 0.74, amb: 0x657494, ambI: 0.9, ground: 0x384250, water: 0x263848 },
-  { h: 24, skyTop: 0x1c2c4e, skyHorizon: 0x3a4c6e, sun: 0xc5d4ee, sunI: 0.72, amb: 0x6a7ca0, ambI: 0.92, ground: 0x3a4556, water: 0x243a52 },
+  { h: 21, skyTop: 0x121e3a, skyHorizon: 0x2a2f4a, sun: 0x93a8d8, sunI: 0.52, amb: 0x384260, ambI: 0.42, ground: 0x1e2634, water: 0x11223a },
+  { h: 24, skyTop: 0x0a1428, skyHorizon: 0x1e2c48, sun: 0x9db4dc, sunI: 0.5, amb: 0x384660, ambI: 0.4, ground: 0x1c2432, water: 0x0e1e34 },
 ];
 
 const cA = new THREE.Color();
