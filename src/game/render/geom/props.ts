@@ -12,8 +12,8 @@ function memo(key: string, make: () => Part[]): THREE.BufferGeometry {
   return g;
 }
 
-/** Tres especies de árbol para que el bosque no sea un campo de conos clonados. */
-export function treeGeometry(species: 0 | 1 | 2): THREE.BufferGeometry {
+/** Cinco especies: frondoso, conífera, matorral, abedul y olivo. */
+export function treeGeometry(species: 0 | 1 | 2 | 3 | 4): THREE.BufferGeometry {
   return memo(`tree${species}`, () => {
     const out: Part[] = [];
     if (species === 0) {
@@ -27,11 +27,23 @@ export function treeGeometry(species: 0 | 1 | 2): THREE.BufferGeometry {
       out.push(cyl(0, 0.12, 0, 0.04, 0.24, 0x5c463a, { seg: 5 }));
       out.push({ g: "cone", x: 0, y: 0.42, z: 0, sx: 0.22, sy: 0.44, sz: 0.22, color: 0x2f6b3f, seg: 7 });
       out.push({ g: "cone", x: 0, y: 0.66, z: 0, sx: 0.16, sy: 0.34, sz: 0.16, color: 0x35743f, seg: 7 });
-    } else {
+    } else if (species === 2) {
       // Arbusto / matorral mediterráneo.
       out.push(cyl(0, 0.08, 0, 0.03, 0.16, 0x6b5344, { seg: 4 }));
       out.push({ g: "sphere", x: 0, y: 0.24, z: 0, sx: 0.19, sy: 0, sz: 0, color: 0x54803f, seg: 6 });
       out.push({ g: "sphere", x: 0.09, y: 0.19, z: 0.06, sx: 0.12, sy: 0, sz: 0, color: 0x5f8a45, seg: 5 });
+    } else if (species === 3) {
+      // Abedul: tronco claro, copa alta y rala. Orillas y valles húmedos.
+      out.push(cyl(0, 0.22, 0, 0.032, 0.44, 0xe8e2d4, { seg: 5 }));
+      out.push({ g: "sphere", x: 0.02, y: 0.58, z: 0, sx: 0.18, sy: 0, sz: 0, color: 0x5a9a4a, seg: 6 });
+      out.push({ g: "sphere", x: -0.08, y: 0.5, z: 0.05, sx: 0.13, sy: 0, sz: 0, color: 0x6aad55, seg: 5 });
+      out.push({ g: "sphere", x: 0.07, y: 0.66, z: -0.04, sx: 0.11, sy: 0, sz: 0, color: 0x4e8c42, seg: 5 });
+    } else {
+      // Olivo / acebuche: copa achatada, tronco torcido. Sotobosque seco.
+      out.push(cyl(0.02, 0.12, 0, 0.038, 0.22, 0x6a5a48, { seg: 5 }));
+      out.push({ g: "sphere", x: 0, y: 0.32, z: 0, sx: 0.22, sy: 0, sz: 0, color: 0x6b8a4a, seg: 6 });
+      out.push({ g: "sphere", x: 0.1, y: 0.28, z: 0.06, sx: 0.14, sy: 0, sz: 0, color: 0x7a9654, seg: 5 });
+      out.push({ g: "sphere", x: -0.09, y: 0.26, z: -0.05, sx: 0.12, sy: 0, sz: 0, color: 0x5e7c40, seg: 5 });
     }
     return out;
   });

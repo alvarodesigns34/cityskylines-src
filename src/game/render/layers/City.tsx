@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { hash2 } from "../../sim/rng";
 import { roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, idx } from "../../sim/types";
 import { sim } from "../../store";
-import { buildingGeometry, variantsFor } from "../geom/buildings";
+import { buildingGeometry, lodGeometry, variantsFor } from "../geom/buildings";
 import { lampGeometry, rockGeometry, treeGeometry } from "../geom/props";
 import { bridgeGeometry, roadGeometry } from "../geom/roads";
 import { createCityMaterial } from "../materials";
 import { useSimVersion } from "../useSimVersion";
+import { viewState, viewTarget } from "../viewTarget";
 
 const dummy = new THREE.Object3D();
 /** Ángulo por orientación: 0 = fachada al norte, 1 = este, 2 = sur, 3 = oeste. */
@@ -151,17 +153,42 @@ export function StreetLamps() {
 export function Buildings() {
   const rev = useSimVersion((s) => s.buildingsVersion);
   const material = useCityMaterial();
+  const [lodKey, setLodKey] = useState("0,0,0");
+  const lodRef = useRef(lodKey);
+  lodRef.current = lodKey;
+
+  useFrame(() => {
+    const qx = Math.round(viewTarget.x / 8);
+    const qz = Math.round(viewTarget.z / 8);
+    const band = viewState.distance > 72 ? 2 : viewState.distance > 38 ? 1 : 0;
+    const key = `${qx},${qz},${band}`;
+    if (key !== lodRef.current) setLodKey(key);
+  });
 
   const buckets = useMemo(() => {
     const map = new Map<string, Bucket>();
     if (!sim) return [] as Bucket[];
     const g = sim.grid;
+    const [qx, qz, band] = lodKey.split(",").map(Number);
+    const cx = (qx ?? 0) * 8;
+    const cz = (qz ?? 0) * 8;
+    const radius = band === 2 ? 0 : band === 1 ? 18 : 28;
+    const radius2 = radius * radius;
     for (const b of sim.buildings) {
+      const x = b.x + b.w / 2;
+      const z = b.z + b.d / 2;
+      const dx = x - cx;
+      const dz = z - cz;
+      const far = radius === 0 || dx * dx + dz * dz > radius2;
       const v = b.variant % variantsFor(b.kind);
-      const key = `${b.kind}:${v}`;
+      const key = far ? `lod:${b.kind}` : `${b.kind}:${v}`;
       let bucket = map.get(key);
       if (!bucket) {
-        bucket = { key, geometry: buildingGeometry(b.kind, v), items: [] };
+        bucket = {
+          key,
+          geometry: far ? lodGeometry(b.kind) : buildingGeometry(b.kind, v),
+          items: [],
+        };
         map.set(key, bucket);
       }
       // Se apoya en la cota más alta de la parcela: nada flota ni se hunde.
@@ -173,15 +200,15 @@ export function Buildings() {
         }
       }
       bucket.items.push({
-        x: b.x + b.w / 2,
+        x,
         y: Math.max(0.02, top),
-        z: b.z + b.d / 2,
+        z,
         rot: b.rot,
       });
     }
     return [...map.values()];
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rev]);
+  }, [rev, lodKey]);
 
   return (
     <group>
@@ -199,9 +226,9 @@ export function Vegetation() {
   const material = useCityMaterial();
 
   const buckets = useMemo(() => {
-    const species: Bucket[] = [0, 1, 2].map((s) => ({
+    const species: Bucket[] = [0, 1, 2, 3, 4].map((s) => ({
       key: `tree${s}`,
-      geometry: treeGeometry(s as 0 | 1 | 2),
+      geometry: treeGeometry(s as 0 | 1 | 2 | 3 | 4),
       items: [],
     }));
     const rocks: Bucket[] = [0, 1].map((s) => ({
@@ -216,12 +243,22 @@ export function Vegetation() {
         const i = idx(x, z);
         const h = g.height[i]!;
         if (g.tree[i]) {
-          // Dos o tres árboles por casilla arbolada, colocados con ruido estable.
+          // Dos o tres árboles por casilla arbolada. La especie sigue el bioma (cota,
+          // humedad por scenery) con ruido, no un corte duro de altura.
           const count = 2 + (hash2(x, z, 3) > 0.6 ? 1 : 0);
+          const moist = g.scenery[i]!;
+          const elev = Math.max(0, Math.min(1, h / 7));
           for (let k = 0; k < count; k++) {
             const jx = hash2(x * 7 + k, z, 11) - 0.5;
             const jz = hash2(x, z * 7 + k, 13) - 0.5;
-            const sp = h > 3.4 ? 1 : hash2(x + k, z, 17) > 0.72 ? 2 : hash2(x, z + k, 19) > 0.45 ? 0 : 1;
+            const roll = hash2(x + k, z, 17);
+            let sp = 0;
+            if (elev > 0.55 + roll * 0.12) sp = 1;
+            else if (moist > 0.55 && roll > 0.55) sp = 3;
+            else if (elev < 0.22 && moist < 0.35) sp = 4;
+            else if (roll > 0.72) sp = 2;
+            else if (roll > 0.38) sp = 0;
+            else sp = 1;
             species[sp]!.items.push({
               x: x + 0.5 + jx * 0.72,
               y: h,

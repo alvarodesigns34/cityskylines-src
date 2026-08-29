@@ -145,30 +145,38 @@ function parapet(out: Part[], ctx: Ctx, hw: number, hd: number, y: number) {
 
 function house(ctx: Ctx): Part[] {
   const out: Part[] = [];
-  const fill = ctx.style.fill ?? 0.65;
+  const fill = (ctx.style.fill ?? 0.65) * (0.92 + ctx.rnd(8) * 0.16);
   const hw = (ctx.w * fill) / 2;
   const hd = (ctx.d * fill) / 2;
   const floors = ctx.style.floors;
   const fh = ctx.style.floorH;
   const bodyH = floors * fh;
+  const roofKind = ctx.rnd(1) > 0.62 ? ctx.style.roof : ctx.rnd(2) > 0.55 ? "hip" : "gable";
 
   out.push(box(0, 0.04, 0, hw * 2 + 0.16, 0.08, hd * 2 + 0.16, ctx.p.base));
   out.push(box(0, bodyH / 2 + 0.06, 0, hw * 2, bodyH, hd * 2, ctx.wall));
   allFacades(out, ctx, hw, hd, 0.06, floors, fh, "grid");
 
   const roofY = bodyH + 0.06;
-  if (ctx.style.roof === "gable") {
-    out.push({ g: "gable", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.22, sy: 0.42 + ctx.rnd(3) * 0.2, sz: hd * 2 + 0.22, color: ctx.p.roof, ry: ctx.rnd(4) > 0.5 ? Math.PI / 2 : 0 });
-  } else if (ctx.style.roof === "hip") {
-    out.push({ g: "hip", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.2, sy: 0.4, sz: hd * 2 + 0.2, color: ctx.p.roof });
+  if (roofKind === "gable") {
+    out.push({ g: "gable", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.22, sy: 0.42 + ctx.rnd(3) * 0.22, sz: hd * 2 + 0.22, color: ctx.p.roof, ry: ctx.rnd(4) > 0.5 ? Math.PI / 2 : 0 });
+  } else if (roofKind === "hip") {
+    out.push({ g: "hip", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.2, sy: 0.36 + ctx.rnd(3) * 0.16, sz: hd * 2 + 0.2, color: ctx.p.roof });
   } else {
     out.push(box(0, roofY + 0.05, 0, hw * 2 + 0.16, 0.1, hd * 2 + 0.16, ctx.p.roof));
   }
   // Chimenea, puerta y seto.
-  out.push(box(hw * 0.5, roofY + 0.32, -hd * 0.3, 0.11, 0.4, 0.11, shade(ctx.p.roof, -0.08)));
+  out.push(box(hw * (ctx.rnd(6) - 0.5), roofY + 0.32, -hd * 0.3, 0.11, 0.4, 0.11, shade(ctx.p.roof, -0.08)));
   out.push(box(0, 0.06 + fh * 0.34, -hd - 0.02, 0.2, fh * 0.62, 0.05, ctx.p.accent));
   const hedge = 0.9;
   out.push(box(0, 0.11, -ctx.d / 2 + 0.08, ctx.w * hedge, 0.14, 0.09, 0x4a7a44));
+  // Anejo: garaje o porche en algunas variantes, para que la hilera no sea un sello.
+  if (ctx.rnd(12) > 0.42 && ctx.w >= 1) {
+    const gx = hw + 0.18;
+    const gh = fh * (0.55 + ctx.rnd(13) * 0.25);
+    out.push(box(gx, gh / 2 + 0.06, 0.05, 0.34, gh, hd * 1.15, shade(ctx.wall, -0.05)));
+    out.push(box(gx, 0.06 + gh * 0.42, -hd * 0.55, 0.26, gh * 0.7, 0.04, 0x3a3f46));
+  }
   return out;
 }
 
@@ -368,26 +376,47 @@ function plant(ctx: Ctx): Part[] {
   const hd = (ctx.d * fill) / 2;
   const fh = ctx.style.floorH;
   const h = ctx.style.floors * fh;
+  const flip = ctx.rnd(40) > 0.5 ? 1 : -1;
 
   out.push(box(0, 0.05, 0, ctx.w * 0.98, 0.1, ctx.d * 0.98, shade(ctx.p.base, -0.08)));
   // Nave principal desplazada, para que no sea una caja centrada.
   const bodyW = hw * 1.25;
   const bodyD = hd * 1.5;
-  out.push(box(-hw * 0.35, h / 2 + 0.1, 0, bodyW, h, bodyD, ctx.wall));
-  facade({ out, ctx, face: "z-", cx: -hw * 0.35, cz: 0, half: bodyW / 2, depth: bodyD / 2, y0: 0.1, floors: ctx.style.floors, floorH: fh, style: ctx.style.windows });
-  out.push(box(-hw * 0.35, h + 0.16, 0, bodyW + 0.12, 0.12, bodyD + 0.12, ctx.p.roof));
+  out.push(box(-hw * 0.35 * flip, h / 2 + 0.1, 0, bodyW, h, bodyD, ctx.wall));
+  facade({
+    out,
+    ctx,
+    face: "z-",
+    cx: -hw * 0.35 * flip,
+    cz: 0,
+    half: bodyW / 2,
+    depth: bodyD / 2,
+    y0: 0.1,
+    floors: ctx.style.floors,
+    floorH: fh,
+    style: ctx.style.windows,
+  });
+  out.push(box(-hw * 0.35 * flip, h + 0.16, 0, bodyW + 0.12, 0.12, bodyD + 0.12, ctx.p.roof));
 
-  // Depósitos cilíndricos.
-  for (let i = 0; i < 2; i++) {
-    const x = hw * 0.55;
-    const z = -hd * 0.5 + i * hd * 1.0;
-    const r = Math.min(0.34, hw * 0.3);
-    out.push(cyl(x, 0.1 + h * 0.42, z, r, h * 0.85, shade(ctx.p.trim, -0.04), { seg: 10 }));
-    out.push(cyl(x, 0.1 + h * 0.86, z, r * 1.06, 0.08, ctx.p.accent, { seg: 10 }));
+  // Depósitos cilíndricos al otro lado de la nave. El lado cambia con la variante.
+  const tanks = 2 + (ctx.rnd(41) > 0.65 ? 1 : 0);
+  for (let i = 0; i < tanks; i++) {
+    const x = hw * 0.55 * flip;
+    const z = -hd * 0.55 + i * ((hd * 1.1) / Math.max(1, tanks - 1));
+    const r = Math.min(0.34, hw * (0.26 + ctx.rnd(42 + i) * 0.08));
+    const hh = h * (0.7 + ctx.rnd(43 + i) * 0.35);
+    out.push(cyl(x, 0.1 + hh * 0.5, z, r, hh, shade(ctx.p.trim, -0.04), { seg: 10 }));
+    out.push(cyl(x, 0.1 + hh, z, r * 1.06, 0.08, ctx.p.accent, { seg: 10 }));
   }
-  // Tuberías y pasarela.
-  out.push(box(hw * 0.1, 0.1 + h * 0.78, 0, hw * 0.9, 0.07, 0.12, 0x8a9095));
-  out.push(box(-hw * 0.35, 0.1 + h * 0.5, -bodyD / 2 - 0.06, bodyW * 0.9, 0.05, 0.1, 0x8a9095));
+  // Anejo bajo en algunas variantes: rompe la silueta de "dos silos y una caja".
+  if (ctx.rnd(44) > 0.4) {
+    const ax = hw * 0.15 * flip;
+    const ah = h * 0.42;
+    out.push(box(ax, ah / 2 + 0.08, hd * 0.55, hw * 0.7, ah, hd * 0.45, shade(ctx.wall, 0.06)));
+    out.push(box(ax, ah + 0.12, hd * 0.55, hw * 0.74, 0.08, hd * 0.48, ctx.p.roof));
+  }
+  out.push(box(hw * 0.1 * flip, 0.1 + h * 0.78, 0, hw * 0.9, 0.07, 0.12, 0x8a9095));
+  out.push(box(-hw * 0.35 * flip, 0.1 + h * 0.5, -bodyD / 2 - 0.06, bodyW * 0.9, 0.05, 0.1, 0x8a9095));
   addChimneys(out, ctx, hw, hd, h + 0.2);
   return out;
 }
@@ -519,7 +548,37 @@ export function partsForBuilding(kind: string, variant: number): Part[] {
 export function variantsFor(kind: string): number {
   const def = DEFS[kind];
   if (!def) return 1;
-  return def.zone === "none" ? 1 : 3;
+  if (def.style.shape === "house" || def.style.shape === "row") return 6;
+  if (def.zone !== "none") return 4;
+  return 2;
+}
+
+/** Caja simplificada para edificios lejos de la cámara. */
+export function lodGeometry(kind: string): THREE.BufferGeometry {
+  const def = DEFS[kind];
+  const key = `lod:${kind}`;
+  let g = cache.get(key);
+  if (g) return g;
+  if (!def) {
+    g = mergeParts([box(0, 0.3, 0, 0.6, 0.6, 0.6, 0x888888)]);
+    cache.set(key, g);
+    return g;
+  }
+  const ctx = ctxFor(def, 0);
+  const fill = ctx.style.fill ?? 0.8;
+  const hw = (ctx.w * fill) / 2;
+  const hd = (ctx.d * fill) / 2;
+  if (ctx.style.shape === "flat") {
+    g = mergeParts([box(0, 0.07, 0, hw * 2, 0.14, hd * 2, ctx.wall)]);
+  } else {
+    const h = Math.max(0.7, ctx.style.floors * ctx.style.floorH);
+    g = mergeParts([
+      box(0, h / 2 + 0.05, 0, hw * 2, h, hd * 2, ctx.wall),
+      box(0, h + 0.1, 0, hw * 2 + 0.08, 0.1, hd * 2 + 0.08, ctx.p.roof),
+    ]);
+  }
+  cache.set(key, g);
+  return g;
 }
 
 const cache = new Map<string, THREE.BufferGeometry>();

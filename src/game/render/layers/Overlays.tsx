@@ -9,6 +9,7 @@ import { useSimVersion } from "../useSimVersion";
 
 const dummy = new THREE.Object3D();
 const _c = new THREE.Color();
+const _c2 = new THREE.Color();
 const CELLS = N * N;
 
 const ZONE_COLOR = ["#000000", "#3fa06a", "#3d7ec4", "#d09a3a"];
@@ -90,8 +91,8 @@ function rampColor(ramp: Ramp, t: number, out: THREE.Color) {
     if (v <= b || i === s.length - 2) {
       const f = (v - a) / Math.max(1e-4, b - a);
       out.set(ca);
-      const other = new THREE.Color(cb);
-      return out.lerp(other, Math.max(0, Math.min(1, f)));
+      _c2.set(cb);
+      return out.lerp(_c2, Math.max(0, Math.min(1, f)));
     }
   }
   return out.set(s[0]![1]);
@@ -171,7 +172,7 @@ export function DataOverlay() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, CELLS]} frustumCulled={false} renderOrder={4}>
       <boxGeometry args={[0.96, 0.02, 0.96]} />
-      <meshBasicMaterial transparent opacity={0.55} toneMapped={false} depthWrite={false} />
+      <meshBasicMaterial transparent opacity={0.42} toneMapped={false} depthWrite={false} />
     </instancedMesh>
   );
 }

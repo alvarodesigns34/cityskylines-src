@@ -137,6 +137,8 @@ function buildDepthTexture(): THREE.DataTexture {
   return tex;
 }
 
+const _shallowMix = new THREE.Color();
+
 export function Water() {
   const ref = useRef<THREE.Mesh>(null);
   const rev = useSimVersion((s) => s.terrainVersion);
@@ -162,7 +164,7 @@ export function Water() {
     uniforms.uSunColor.value.copy(sky.sunColor);
     uniforms.uSkyColor.value.copy(sky.skyHorizon);
     uniforms.uNight.value = sky.night;
-    uniforms.uShallow.value.copy(sky.waterTint).lerp(new THREE.Color(0x6fb2c4), 0.45);
+    uniforms.uShallow.value.copy(sky.waterTint).lerp(_shallowMix.setHex(0x6fb2c4), 0.45);
     uniforms.uDeep.value.copy(sky.waterTint).multiplyScalar(0.75);
     uniforms.uFogColor.value.copy(sky.fogColor);
     uniforms.uFogNear.value = sky.fogNear;

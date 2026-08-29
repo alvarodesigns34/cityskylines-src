@@ -81,7 +81,10 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
         if (!p) return null;
         const gx = Math.floor(p.x);
         const gz = Math.floor(p.z);
-        if (!inBounds(gx, gz)) return iter === 2 ? null : null;
+        if (!inBounds(gx, gz)) {
+          h = Math.max(0, h * 0.5);
+          continue;
+        }
         const th = sim ? Math.max(0, sim.grid.height[idx(gx, gz)]!) : 0;
         if (Math.abs(th - h) < 0.08) return { x: gx, z: gz };
         h = th;

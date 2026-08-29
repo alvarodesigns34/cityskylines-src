@@ -10,7 +10,7 @@ export interface Palette {
 
 export const PALETTES: Record<string, Palette> = {
   suburb: {
-    wall: [0xe6d9c4, 0xefe6d6, 0xd9c6ab, 0xe2cfc2, 0xd6ddd4],
+    wall: [0xe6d9c4, 0xefe6d6, 0xd9c6ab, 0xe2cfc2, 0xd6ddd4, 0xc9b89a, 0xf0e4d0],
     trim: 0xf5efe4,
     roof: 0x8d4438,
     base: 0xb9ab97,
@@ -18,7 +18,7 @@ export const PALETTES: Record<string, Palette> = {
     accent: 0x6e5442,
   },
   townhouse: {
-    wall: [0xd8c3ab, 0xc9ae95, 0xe3d4bd, 0xbfae9c],
+    wall: [0xd8c3ab, 0xc9ae95, 0xe3d4bd, 0xbfae9c, 0xb8967a, 0xead9c4],
     trim: 0xf2ece0,
     roof: 0x6d4133,
     base: 0x9a8a76,
