@@ -125,7 +125,10 @@ export function resolveBudget(sim: CitySim) {
 export function takeLoan(sim: CitySim, amount: number): boolean {
   const room = debtCeiling(sim) - sim.debt;
   const take = Math.min(amount, room);
-  if (take < 500) return false;
+  if (take < 500) {
+    sim.pushNotice("loan", "No hay crédito disponible.", "warn");
+    return false;
+  }
   sim.debt += take;
   sim.money += take;
   sim.pushNotice("loan", `Préstamo de $${take.toLocaleString("es")} concedido.`, "info");

@@ -61,7 +61,15 @@ class Input {
 
   private onDown = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null;
-    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+    if (
+      el &&
+      (el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "BUTTON" ||
+        el.isContentEditable ||
+        el.closest("button, [role='button']"))
+    )
+      return;
     this.keys.add(e.code);
     if (GAME_CODES.has(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
   };

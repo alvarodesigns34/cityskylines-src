@@ -85,6 +85,7 @@ function beginAssignment(sim: CitySim) {
     sim.congestion = 0;
     sim.routes.length = 0;
     cursor = -1;
+    sim.fieldsVersion++;
     return;
   }
   // Viajes diarios que representa cada muestra (ida y vuelta).
@@ -134,6 +135,7 @@ function commit(sim: CitySim) {
   }
   sim.congestion = jamW > 0 ? clamp01(jamSum / jamW) : 0;
   sim.routes = pendingRoutes;
+  sim.fieldsVersion++;
 
   for (const b of sim.buildings) {
     const d = DEFS[b.kind]!;

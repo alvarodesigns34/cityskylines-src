@@ -40,6 +40,8 @@ export interface SaveBlob {
   history: HistoryPoint[];
   rain?: number;
   policies?: Partial<Policies>;
+  paused?: boolean;
+  speed?: number;
 }
 
 export function writeSave(blob: SaveBlob): boolean {

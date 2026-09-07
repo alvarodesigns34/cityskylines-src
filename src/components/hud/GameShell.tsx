@@ -21,7 +21,7 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { money, num, pct } from "./format";
 import { Inspector } from "./Inspector";
 import { BudgetPanel, Meter, ServicesPanel, StatsPanel } from "./panels";
-import { OVERLAYS, SELECT_TOOL, SHORTCUTS, TOOL_GROUPS, tierName, type ToolEntry } from "./tools";
+import { OVERLAYS, SELECT_TOOL, SHORTCUTS, TOOL_GROUPS, groupIdForTool, tierName, type ToolEntry } from "./tools";
 
 const CityCanvas = lazy(() =>
   import("@/game/render/CityScene").then((m) => ({ default: m.CityCanvas })),
@@ -37,7 +37,7 @@ export function GameShell() {
     input.attach();
     if (!sim) setSim(createPreview());
     const onHide = () => {
-      if (document.hidden && useGame.getState().phase === "playing") useGame.getState().persistNow();
+      if (document.hidden && useGame.getState().phase === "playing") useGame.getState().persistNow(false);
     };
     document.addEventListener("visibilitychange", onHide);
     return () => {
@@ -62,6 +62,7 @@ function StartOverlay() {
   const startNew = useGame((s) => s.startNew);
   const continueSave = useGame((s) => s.continueSave);
   const canContinue = useGame((s) => s.hasSave);
+  const loadError = useGame((s) => s.loadError);
 
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between bg-gradient-to-b from-bg/70 via-transparent to-bg/80 p-5 sm:p-8">
@@ -97,9 +98,10 @@ function StartOverlay() {
           </button>
         ) : null}
         <p className="text-xs text-faint">
-          WASD mover · Q/E girar · T/G inclinar · rueda zoom · clic derecho orbitar · arrastra para construir
-          · un dedo pinta, dos orbitan
+          WASD mover · Q/E girar · T/G inclinar · rueda o R/F zoom · clic derecho orbitar · 1–9
+          herramientas · Espacio pausa · Esc cierra e inspecciona · un dedo pinta, dos orbitan
         </p>
+        {loadError ? <p className="text-xs text-danger">{loadError}</p> : null}
       </div>
     </div>
   );
@@ -120,6 +122,7 @@ function PlayHud() {
   const persistNow = useGame((s) => s.persistNow);
   const toMenu = useGame((s) => s.toMenu);
   const savedFlash = useGame((s) => s.savedFlash);
+  const saveError = useGame((s) => s.saveError);
   const hoverReason = useGame((s) => s.hoverReason);
 
   useEffect(() => {
@@ -140,7 +143,11 @@ function PlayHud() {
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit) {
         const t = SHORTCUTS[Number(digit[1]) - 1];
-        if (t) setTool(t);
+        if (t) {
+          const gid = groupIdForTool(t);
+          if (gid) setGroup(gid);
+          setTool(t);
+        }
         return;
       }
       if (e.code === "Space") {
@@ -178,7 +185,8 @@ function PlayHud() {
               {snapshot.nextTierPop != null
                 ? ` · ${snapshot.nextTierName} a ${num(snapshot.nextTierPop)} hab.`
                 : ""}
-              {snapshot.rain > 0.35 ? " · lluvia" : snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
+              {snapshot.rain > 0.35 ? " · lluvia" : ""}
+              {snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
             </p>
           </div>
           <Chip icon={<Users className="size-3.5 text-zone-r" />} value={num(snapshot.pop)} label="hab." />
@@ -266,19 +274,19 @@ function PlayHud() {
             label="Luz"
             value={Math.min(1, powerRatio)}
             color="#e0c44a"
-            hint={`${snapshot.powerSupply}/${snapshot.powerNeed}`}
+            hint={`${num(snapshot.powerSupply)}/${num(snapshot.powerNeed)}`}
           />
           <Meter
             label="Agua"
             value={Math.min(1, waterRatio)}
             color="#4aa7d4"
-            hint={`${snapshot.waterSupply}/${snapshot.waterNeed}`}
+            hint={`${num(snapshot.waterSupply)}/${num(snapshot.waterNeed)}`}
           />
           <Meter
             label="Basura"
             value={Math.min(1, garbageRatio)}
             color="#c9c14a"
-            hint={`${snapshot.garbageCapacity}/${snapshot.garbageNeed}`}
+            hint={`${num(snapshot.garbageCapacity)}/${num(snapshot.garbageNeed)}`}
           />
         </div>
 
@@ -324,6 +332,9 @@ function PlayHud() {
         {savedFlash > 0 && Date.now() - savedFlash < 1800 ? (
           <div className="hud-panel rounded-full px-3 py-1 text-[11px] text-muted">Guardado</div>
         ) : null}
+        {saveError > 0 && Date.now() - saveError < 4000 ? (
+          <div className="hud-panel rounded-full px-3 py-1 text-[11px] text-danger">No se pudo guardar</div>
+        ) : null}
       </div>
 
       {panel === "budget" ? <BudgetPanel snap={snapshot} onClose={() => setPanel("none")} /> : null}
@@ -346,20 +357,27 @@ function PlayHud() {
             >
               Inspeccionar
             </button>
-            {TOOL_GROUPS.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                className={`tab-btn ${group === g.id && tool !== "select" ? "active" : ""}`}
-                onClick={() => {
-                  setGroup(g.id);
-                  const first = g.tools.find((t) => isUnlocked(t, snapshot));
-                  if (first) setTool(first.tool);
-                }}
-              >
-                {g.name}
-              </button>
-            ))}
+            {TOOL_GROUPS.map((g) => {
+              const unlocked = g.tools.some((t) => isUnlocked(t, snapshot));
+              const lockTier = Math.min(...g.tools.map((t) => t.tier));
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  disabled={!unlocked}
+                  title={!unlocked ? `Se desbloquea en ${tierName(lockTier)}` : g.name}
+                  className={`tab-btn ${group === g.id && tool !== "select" ? "active" : ""}`}
+                  onClick={() => {
+                    if (!unlocked) return;
+                    setGroup(g.id);
+                    const first = g.tools.find((t) => isUnlocked(t, snapshot));
+                    if (first) setTool(first.tool);
+                  }}
+                >
+                  {g.name}
+                </button>
+              );
+            })}
           </div>
           <nav className="scroll-x flex max-w-full gap-0.5 overflow-x-auto">
             {activeGroup.tools.map(({ tool: id, name, icon: Icon, tier }) => {
@@ -477,7 +495,8 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         </ol>
         <p className="mt-4 text-xs leading-relaxed text-faint">
           WASD mover · Q/E girar · T/G inclinar · rueda o R/F zoom · botón derecho orbitar · Shift+arrastre paneo ·
-          1 inspeccionar · 2 calle · 3–5 zonas · 6–7 luz/agua · 8 árbol · 9 demoler · Espacio pausa · Esc cierra.
+          1 inspeccionar · 2 calle · 3–5 zonas · 6–7 luz/agua · 8 árbol · 9 demoler · Espacio pausa · Esc cierra e
+          inspecciona.
         </p>
         <button
           type="button"

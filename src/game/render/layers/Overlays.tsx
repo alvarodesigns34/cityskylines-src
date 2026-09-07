@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { roadSurface } from "../../sim/systems/network";
+import { ZONE_DEPTH, roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, type OverlayKind } from "../../sim/types";
 import { sim, useGame } from "../../store";
 import { buildingGeometry } from "../geom/buildings";
@@ -120,7 +120,7 @@ function fieldValue(overlay: OverlayKind, i: number): number | null {
     case "health":
       return g.service.health![i]!;
     case "safety":
-      return Math.max(g.service.police![i]!, g.service.fire![i]!);
+      return g.service.police![i]!;
     case "fire":
       return g.service.fire![i]!;
     case "garbage":
@@ -150,7 +150,7 @@ export function DataOverlay() {
       const v = fieldValue(overlay, i);
       if (v === null) continue;
       if (overlay === "power" || overlay === "water") {
-        const relevant = g.roadDist[i]! <= 4;
+        const relevant = g.roadDist[i]! <= ZONE_DEPTH;
         if (!relevant) continue;
         _c.set(v > 0 ? (overlay === "power" ? "#e0c44a" : "#4aa7d4") : "#c0453a");
       } else if (ramp) {

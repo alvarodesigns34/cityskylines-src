@@ -17,6 +17,8 @@ interface GameStore {
   snapshot: Snapshot | null;
   selected: { x: number; z: number } | null;
   savedFlash: number;
+  saveError: number;
+  loadError: string | null;
   hoverReason: string | null;
   worldId: number;
   startNew: (seed?: number) => void;
@@ -116,12 +118,15 @@ export const useGame = create<GameStore>((set, get) => ({
   snapshot: null,
   selected: null,
   savedFlash: 0,
+  saveError: 0,
+  loadError: null,
   hoverReason: null,
   worldId: 0,
 
   startNew: (seed?: number) => {
     setSim(new CitySim(seed));
     sim!.tool = "road-street";
+    const ok = sim!.persist();
     set({
       phase: "playing",
       tool: "road-street",
@@ -129,16 +134,20 @@ export const useGame = create<GameStore>((set, get) => ({
       panel: "none",
       selected: null,
       snapshot: sim!.snapshot(),
-      hasSave: true,
+      hasSave: ok,
+      loadError: null,
+      saveError: ok ? 0 : Date.now(),
       worldId: get().worldId + 1,
     });
-    sim!.persist();
   },
 
   continueSave: () => {
     const loaded = loadOrNull();
     if (!loaded) {
-      get().startNew();
+      set({
+        hasSave: hasSave(),
+        loadError: "No se pudo restaurar la ciudad. El guardado está dañado.",
+      });
       return;
     }
     setSim(loaded);
@@ -149,6 +158,7 @@ export const useGame = create<GameStore>((set, get) => ({
       panel: "none",
       selected: null,
       snapshot: loaded.snapshot(),
+      loadError: null,
       worldId: get().worldId + 1,
     });
   },
@@ -200,7 +210,12 @@ export const useGame = create<GameStore>((set, get) => ({
   persistNow: (flash = true) => {
     if (!sim) return;
     const ok = sim.persist();
-    if (ok && flash) set({ savedFlash: Date.now(), hasSave: true });
+    if (ok) {
+      if (flash) set({ savedFlash: Date.now(), hasSave: true, saveError: 0 });
+      else set({ hasSave: true, saveError: 0 });
+    } else {
+      set({ saveError: Date.now() });
+    }
   },
 
   changeTax: (zone, value) => {

@@ -90,7 +90,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
         icon: Route,
         tier: ROADS[3]!.tier,
       },
-      { tool: "bulldoze", name: "Demoler", hint: "Quita vías, zonas, árboles y edificios.", cost: null, icon: Hammer, tier: 0 },
+      { tool: "bulldoze", name: "Demoler", hint: "Quita vías, zonas, árboles y edificios. $60 edificio · $18 vía · $4 zona o árbol.", cost: null, icon: Hammer, tier: 0 },
     ],
   },
   {
@@ -178,7 +178,7 @@ export const OVERLAYS: OverlayEntry[] = [
   { id: "health", name: "Sanidad", icon: Stethoscope },
   { id: "safety", name: "Seguridad", icon: ShieldCheck },
   { id: "fire", name: "Bomberos", icon: Flame },
-  { id: "garbage", name: "Basura", icon: Trash2 },
+  { id: "garbage", name: "Recogida", icon: Trash2 },
 ];
 
 /** Atajos 1..9: inspectar y herramientas de Aldea (siempre desbloqueadas). */
@@ -193,3 +193,8 @@ export const SHORTCUTS: Tool[] = [
   "tree-plant",
   "bulldoze",
 ];
+
+export function groupIdForTool(tool: Tool): string | undefined {
+  if (tool === "select") return undefined;
+  return TOOL_GROUPS.find((g) => g.tools.some((t) => t.tool === tool))?.id;
+}

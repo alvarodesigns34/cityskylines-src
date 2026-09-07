@@ -133,6 +133,14 @@ export function rebuildNetwork(g: Grid): { roadCount: number; connected: boolean
   return { roadCount, connected: hooked };
 }
 
+/** Calles o avenidas pintadas que no tocan la red de la autovía. */
+export function hasIsolatedRoads(g: Grid): boolean {
+  for (let i = 0; i < CELLS; i++) {
+    if (g.road[i] !== ROAD.none && g.road[i] !== ROAD.highway && !g.connected[i]) return true;
+  }
+  return false;
+}
+
 /** Coste de recorrer una casilla de vía, en "minutos". Sube con la congestión. */
 export function travelCost(g: Grid, i: number): number {
   const cls = g.road[i]!;

@@ -128,7 +128,7 @@ export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => 
         id="cleanIndustry"
         on={snap.policies.cleanIndustry}
         label="Industria limpia"
-        hint="Menos humo, algo menos de empleo industrial. ~$90 + 0,85 por empleo industrial al día."
+        hint="Menos humo y algo menos de demanda industrial. ~$90 + 0,85 por empleo industrial al día."
         onToggle={setPolicy}
       />
       <PolicyToggle
@@ -157,7 +157,7 @@ export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => 
 
       <h3 className="mt-5 text-[11px] font-medium tracking-wide text-muted uppercase">Crédito</h3>
       <p className="mt-1 text-[11px] leading-relaxed text-faint">
-        Límite {money(ceiling)} · interés 9,5% anual, se amortiza solo cada día.
+        Límite {money(ceiling)} · interés 9% anual, se amortiza solo cada día.
       </p>
       <div className="mt-2 flex gap-2">
         <button type="button" className="pill-btn flex-1 justify-center" onClick={() => borrow(20000)}>
@@ -347,7 +347,7 @@ export function ServicesPanel({ snap, onClose }: { snap: Snapshot; onClose: () =
         />
         {snap.garbageBacklog > 0 ? (
           <p className="mt-2 text-[11px] text-danger">
-            {num(snap.garbageBacklog)} t sin recoger acumuladas en las calles.
+            {num(snap.garbageBacklog)} ud. sin recoger acumuladas en las calles.
           </p>
         ) : null}
       </div>

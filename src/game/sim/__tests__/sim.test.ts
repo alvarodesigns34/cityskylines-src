@@ -472,3 +472,64 @@ test("en pausa no spawnean coches por frame", () => {
   for (let i = 0; i < 120; i++) sim.step(1 / 60);
   assert.equal(sim.vehicles.length, before);
 });
+
+test("demoler un edificio conserva la zona en toda la huella", () => {
+  const sim = seededCity();
+  run(sim, 900);
+  const b = sim.buildings.find((x) => DEFS[x.kind]!.zone !== "none");
+  assert.ok(b, "hay edificios crecidos");
+  const zones: number[] = [];
+  for (let zz = 0; zz < b!.d; zz++) {
+    for (let xx = 0; xx < b!.w; xx++) {
+      zones.push(sim.grid.zone[idx(b!.x + xx, b!.z + zz)]!);
+    }
+  }
+  assert.ok(zones.every((z) => z > 0), "el edificio estaba sobre zona");
+  sim.applyTool("bulldoze", b!.x, b!.z);
+  let k = 0;
+  for (let zz = 0; zz < b!.d; zz++) {
+    for (let xx = 0; xx < b!.w; xx++) {
+      const i = idx(b!.x + xx, b!.z + zz);
+      assert.equal(sim.grid.building[i], -1);
+      assert.equal(sim.grid.zone[i], zones[k]);
+      k++;
+    }
+  }
+});
+
+test("guardar conserva pausa y velocidad", () => {
+  const sim = new CitySim(SEED);
+  sim.paused = true;
+  sim.speed = 3;
+  const loaded = CitySim.fromSave(JSON.parse(JSON.stringify(sim.toSave())));
+  assert.ok(loaded);
+  assert.equal(loaded!.paused, true);
+  assert.equal(loaded!.speed, 3);
+});
+
+test("sin calles sueltas no avisa de aislamiento", () => {
+  const sim = new CitySim(SEED);
+  sim.paused = false;
+  sim.speed = 3;
+  for (let i = 0; i < 80; i++) sim.step(0.1);
+  assert.equal(
+    sim.notices.some((n) => n.key === "conn"),
+    false,
+    "la autovía sola no es una ciudad aislada",
+  );
+});
+
+test("una calle desconectada dispara el aviso de aislamiento", () => {
+  const sim = new CitySim(SEED);
+  const far = { x: N - 6, z: 4 };
+  sim.applyTool("road-street", far.x, far.z);
+  sim.refreshAll();
+  assert.equal(sim.grid.connected[idx(far.x, far.z)], 0);
+  sim.paused = false;
+  sim.speed = 3;
+  for (let i = 0; i < 80; i++) sim.step(0.1);
+  assert.ok(
+    sim.notices.some((n) => n.key === "conn"),
+    "debe avisar de las calles que no tocan la autovía",
+  );
+});

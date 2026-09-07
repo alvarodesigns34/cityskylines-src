@@ -14,8 +14,8 @@ import { mulberry32 } from "./rng";
 import { readSave, type SaveBlob, writeSave } from "./save";
 import { updateEnvironment } from "./systems/environment";
 import { checkProgression, resolveBudget } from "./systems/economy";
-import { ZONE_DEPTH, facingRoad, rebuildNetwork } from "./systems/network";
-import { updatePopulation } from "./systems/population";
+import { ZONE_DEPTH, facingRoad, hasIsolatedRoads, rebuildNetwork } from "./systems/network";
+import { HOUSEHOLD_SIZE, updatePopulation } from "./systems/population";
 import { isHooked, updateServices } from "./systems/services";
 import { assignTraffic, tickAssignment, tickVehicleSpawns, updateVehicles } from "./systems/traffic";
 import {
@@ -478,11 +478,15 @@ export class CitySim {
     }
 
     if (tool === "bulldoze") {
+      // Un edificio se derriba entero y deja la zona, para que pueda volver a crecer.
       if (g.building[i]! >= 0) {
         const bi = g.building[i]!;
         const b = this.buildings[bi];
         if (b && b.kind === "city_hall") this.hasCityHall = false;
         removeBuilding(this, bi);
+        this.money -= check.cost;
+        this.servicesDirty = true;
+        return true;
       }
       g.road[i] = ROAD.none;
       g.zone[i] = 0;
@@ -541,10 +545,12 @@ export class CitySim {
       zone: g.zoneOf(i),
       density: g.density[i] ? ("high" as const) : ("low" as const),
       tree: g.tree[i] === 1,
-      connected: g.roadDist[i]! <= ZONE_DEPTH,
+      connected: b ? isHooked(this, b.x, b.z, b.w, b.d) : g.roadDist[i]! <= ZONE_DEPTH,
       roadDist: g.roadDist[i]!,
       powered: g.powered[i] === 1,
       watered: g.watered[i] === 1,
+      needsPower: def ? def.power > 0 : g.road[i] !== ROAD.none || g.zone[i] !== 0,
+      needsWater: def ? def.water > 0 : g.road[i] !== ROAD.none || g.zone[i] !== 0,
       landValue: g.landValue[i]!,
       pollution: g.pollution[i]!,
       noise: g.noise[i]!,
@@ -563,7 +569,7 @@ export class CitySim {
             size: `${b.w}×${b.d}`,
             occupancy: b.occupancy,
             wellbeing: b.wellbeing,
-            residents: Math.round(def!.homes * b.occupancy * 2.5),
+            residents: Math.round(def!.homes * b.occupancy * HOUSEHOLD_SIZE),
             jobs: Math.round(def!.jobs * b.occupancy),
             upkeep: def!.upkeep,
             trips: b.trips,
@@ -589,7 +595,7 @@ export class CitySim {
   pruneNotices() {
     const ttl = TICKS_PER_DAY * 3;
     const done = new Set<string>();
-    if (this.connectedCity) done.add("conn");
+    if (!hasIsolatedRoads(this.grid)) done.add("conn");
     if (this.powerRatio >= 0.95) done.add("power");
     if (this.waterRatio >= 0.95) done.add("water");
     if (this.garbageRatio >= 0.9) done.add("garbage");
@@ -606,9 +612,8 @@ export class CitySim {
   }
 
   private advise() {
-    if (!this.connectedCity) {
-      this.pushNotice("conn", "Ninguna calle llega a la autovía: la ciudad está aislada.", "warn");
-      return;
+    if (hasIsolatedRoads(this.grid)) {
+      this.pushNotice("conn", "Hay calles sin conexión a la autovía: la ciudad está aislada.", "warn");
     }
     if (this.powerRatio < 0.95 && this.powerNeed > 0)
       this.pushNotice("power", "Falta potencia eléctrica: apagones parciales en toda la ciudad.", "warn");
@@ -734,6 +739,8 @@ export class CitySim {
       history: this.history,
       rain: Number(this.rain.toFixed(3)),
       policies: { ...this.policies },
+      paused: this.paused,
+      speed: this.speed,
     };
   }
 
@@ -766,6 +773,8 @@ export class CitySim {
     sim.history = blob.history ?? [];
     sim.rain = blob.rain ?? 0;
     sim.rainTarget = blob.rain ?? 0;
+    sim.paused = blob.paused ?? false;
+    sim.speed = blob.speed && blob.speed >= 1 ? blob.speed : 1;
     sim.policies = {
       cleanIndustry: blob.policies?.cleanIndustry ?? false,
       housingGrant: blob.policies?.housingGrant ?? false,

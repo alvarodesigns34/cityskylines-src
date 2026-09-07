@@ -30,19 +30,23 @@ export function Inspector() {
       ? ROADS[info.road]!.name
       : info.zone !== "none"
         ? `Zona ${info.zone === "R" ? "residencial" : info.zone === "C" ? "comercial" : "industrial"}`
-        : TERRAIN_NAME[info.terrain as 0 | 1 | 2 | 3];
+        : info.tree
+          ? "Árbol"
+          : TERRAIN_NAME[info.terrain as 0 | 1 | 2 | 3];
 
   const problems: string[] = [];
   if (info.zone !== "none" || b) {
     if (!info.connected) problems.push("sin acceso a la red viaria");
     else {
-      if (!info.powered) problems.push("sin electricidad");
-      if (!info.watered) problems.push("sin agua");
+      if (info.needsPower && !info.powered) problems.push("sin electricidad");
+      if (info.needsWater && !info.watered) problems.push("sin agua");
     }
     if (info.pollution > 0.35) problems.push("aire muy contaminado");
     if (info.noise > 0.5) problems.push("demasiado ruido");
     if (!b && info.demand < 0.12) problems.push("demanda baja");
   }
+
+  const showInfra = Boolean(b || info.zone !== "none" || info.road !== ROAD.none);
 
   return (
     <div className="pointer-events-auto hud-panel rounded-2xl p-3">
@@ -73,11 +77,17 @@ export function Inspector() {
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
-        <Tag ok={info.powered} icon={<Zap className="size-3" />} label={info.powered ? "Luz" : "Sin luz"} />
-        <Tag ok={info.watered} icon={<Droplets className="size-3" />} label={info.watered ? "Agua" : "Sin agua"} />
-        <Tag ok={info.connected} label={info.connected ? "En red" : "Aislado"} />
-      </div>
+      {showInfra ? (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+          {info.needsPower ? (
+            <Tag ok={info.powered} icon={<Zap className="size-3" />} label={info.powered ? "Luz" : "Sin luz"} />
+          ) : null}
+          {info.needsWater ? (
+            <Tag ok={info.watered} icon={<Droplets className="size-3" />} label={info.watered ? "Agua" : "Sin agua"} />
+          ) : null}
+          <Tag ok={info.connected} label={info.connected ? "En red" : "Aislado"} />
+        </div>
+      ) : null}
 
       <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
         <Stat label="Valor del suelo" value={pct(info.landValue)} />

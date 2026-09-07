@@ -199,6 +199,8 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
         } else if (useGame.getState().hoverReason) {
           useGame.setState({ hoverReason: null });
         }
+      } else if (useGame.getState().hoverReason) {
+        useGame.setState({ hoverReason: null });
       }
       if (mode.current === "paint" && cell && interactive) {
         if (!lastCell.current || lastCell.current.x !== cell.x || lastCell.current.z !== cell.z) {

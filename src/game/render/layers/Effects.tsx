@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { DEFS } from "../../sim/catalog";
 import { hash2 } from "../../sim/rng";
@@ -26,6 +26,11 @@ export function Vehicles() {
     useRef<THREE.InstancedMesh>(null),
   ];
   useEffect(() => () => material.dispose(), [material]);
+  useLayoutEffect(() => {
+    for (const r of refs) {
+      if (r.current) r.current.count = 0;
+    }
+  }, []);
 
   useFrame(() => {
     if (!sim) return;

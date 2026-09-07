@@ -22,7 +22,7 @@ servicios → ver crecer y densificarse la ciudad → equilibrar presupuesto, hu
    cualificados. Sin **bomberos**, los edificios arden de verdad.
 
 Controles: `WASD` mover · `Q`/`E` girar · `T`/`G` inclinar · rueda o `R`/`F` zoom · botón derecho
-orbitar · `1`–`9` herramientas · `Espacio` pausa · `Esc` inspeccionar.
+orbitar · `1`–`9` herramientas · `Espacio` pausa · `Esc` cierra e inspecciona.
 
 ## Desarrollo
 
@@ -31,7 +31,7 @@ npm install
 npm run dev        # http://localhost:8080
 npm run typecheck
 npm run lint
-npm test           # incluye 13 pruebas de simulación
+npm test           # pruebas de simulación
 npm run build      # app con servidor (TanStack Start + Nitro)
 npm run build:pages  # SPA estática que se publica en GitHub Pages
 ```
