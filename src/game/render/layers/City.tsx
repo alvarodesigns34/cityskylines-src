@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { hash2 } from "../../sim/rng";
 import { roadSurface } from "../../sim/systems/network";
@@ -44,7 +44,7 @@ function InstancedBucket({
   const capacity = useMemo(() => Math.max(16, 1 << Math.ceil(Math.log2(bucket.items.length + 1))), [
     bucket.items.length,
   ]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
     bucket.items.forEach((it, i) => {

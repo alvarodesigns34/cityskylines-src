@@ -8,6 +8,16 @@ export const HOUSEHOLD_SIZE = 2.5;
 export const ACTIVE_RATE = 0.58;
 
 /**
+ * Fracción por tick hacia el objetivo de ocupación. Un día = 720 ticks ≈ 60 s a 1×.
+ *
+ * Llenar 0.018 → ~63 % del camino en ~56 ticks (un par de horas de juego).
+ * Vaciar 0.004 → ~63 % en ~250 ticks: un apagón no deja la ciudad fantasma en segundos.
+ */
+export const OCCUPANCY_FILL = 0.018;
+export const OCCUPANCY_DRAIN = 0.004;
+
+
+/**
  * Personas, empleo, formación, salud y ánimo.
  *
  * La ocupación de cada edificio no es un interruptor: es el resultado continuo de lo bien
@@ -117,7 +127,7 @@ export function updatePopulation(sim: CitySim) {
     }
     target = clamp01(target);
 
-    const rate = target > b.occupancy ? 0.035 : 0.06;
+    const rate = target > b.occupancy ? OCCUPANCY_FILL : OCCUPANCY_DRAIN;
     b.occupancy = clamp01(b.occupancy + (target - b.occupancy) * rate);
     b.age += 1;
 

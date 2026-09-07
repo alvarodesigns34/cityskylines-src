@@ -82,6 +82,13 @@ function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind 
     : CITY_GLSL.vertexCommon;
   shader.vertexShader = shader.vertexShader
     .replace("#include <common>", common)
+    .replace(
+      "#include <color_vertex>",
+      `#include <color_vertex>
+         #if defined(USE_INSTANCING_COLOR) && defined(USE_COLOR)
+         if (aEmis > 0.45) vColor = color;
+         #endif`,
+    )
     .replace("#include <begin_vertex>", begin)
     .replace("#include <defaultnormal_vertex>", CITY_GLSL.defaultNormal)
     .replace("#include <project_vertex>", CITY_GLSL.projectVertex);
@@ -109,7 +116,7 @@ export function createCityMaterial(params: THREE.MeshStandardMaterialParameters 
     ...params,
   });
   mat.onBeforeCompile = (shader) => patchCityShader(shader, false);
-  mat.customProgramCacheKey = () => "city-pbr-v3";
+  mat.customProgramCacheKey = () => "city-pbr-v4";
   return mat;
 }
 
@@ -122,7 +129,7 @@ export function createFoliageMaterial(params: THREE.MeshStandardMaterialParamete
     ...params,
   });
   mat.onBeforeCompile = (shader) => patchCityShader(shader, true);
-  mat.customProgramCacheKey = () => "city-foliage-v1";
+  mat.customProgramCacheKey = () => "city-foliage-v2";
   return mat;
 }
 

@@ -5,7 +5,8 @@ import { Grid } from "../grid";
 import { DEFS, ROADS, TIERS } from "../catalog";
 import { generateMap } from "../generate";
 import { ZONE_DEPTH } from "../systems/network";
-import { N, ROAD, TERRAIN, TICKS_PER_DAY, idx, type Building } from "../types";
+import { OCCUPANCY_DRAIN } from "../systems/population";
+import { N, ROAD, SIM_DT, TERRAIN, TICKS_PER_DAY, idx, type Building } from "../types";
 
 const SEED = 4242;
 
@@ -532,4 +533,24 @@ test("una calle desconectada dispara el aviso de aislamiento", () => {
     sim.notices.some((n) => n.key === "conn"),
     "debe avisar de las calles que no tocan la autovía",
   );
+});
+
+test("un apagón corto no vacía la ciudad", () => {
+  const sim = seededCity();
+  run(sim, 1600);
+  const pop = sim.pop;
+  assert.ok(pop > 40, `población de partida ${pop}`);
+  const plant = sim.buildings.find((b) => b.kind === "power_coal");
+  assert.ok(plant, "hay central");
+  sim.applyTool("bulldoze", plant.x, plant.z);
+  sim.refreshAll();
+  assert.ok(sim.powerSupply < 1, "sin central no hay suministro");
+  sim.paused = false;
+  sim.speed = 1;
+  for (let i = 0; i < 120; i++) sim.step(SIM_DT);
+  assert.ok(
+    sim.pop > pop * 0.4,
+    `tras ~10 s de apagón a 1× deben quedar vecinos: ${sim.pop} de ${pop}`,
+  );
+  assert.ok(OCCUPANCY_DRAIN <= 0.01, "el vaciado tiene que ser lento a escala de un día");
 });

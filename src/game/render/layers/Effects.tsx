@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { DEFS } from "../../sim/catalog";
 import { hash2 } from "../../sim/rng";
-import { N } from "../../sim/types";
+import { N, idx } from "../../sim/types";
 import { sim } from "../../store";
 import { skyFor } from "../daynight";
 import { chimneysFor, variantsFor } from "../geom/buildings";
@@ -169,6 +169,7 @@ const _rainDummy = new THREE.Object3D();
 /** Ráfagas de lluvia ancladas a la cámara: no llueve fuera de lo que se ve. */
 export function Rain() {
   const ref = useRef<THREE.InstancedMesh>(null);
+  const tRef = useRef(0);
   const seeds = useMemo(() => {
     const s = new Float32Array(RAIN_COUNT * 4);
     for (let i = 0; i < RAIN_COUNT; i++) {
@@ -199,26 +200,32 @@ export function Rain() {
     [geometry, material],
   );
 
-  useFrame(({ clock }) => {
+  useFrame((_, dt) => {
     const mesh = ref.current;
     if (!mesh || !sim) return;
     const rain = sim.rain;
     mesh.visible = rain > 0.08;
     if (!mesh.visible) return;
+    if (!sim.paused) tRef.current += dt;
     material.opacity = 0.14 + rain * 0.42;
-    const t = clock.elapsedTime;
+    const t = tRef.current;
     const tx = viewTarget.x;
-    const ty = viewTarget.y;
     const tz = viewTarget.z;
+    const g = sim.grid;
     for (let i = 0; i < RAIN_COUNT; i++) {
       const ox = seeds[i * 4]!;
       const oz = seeds[i * 4 + 1]!;
       const spd = seeds[i * 4 + 2]!;
       const off = seeds[i * 4 + 3]!;
-      const y = 18 - ((t * spd + off) % 22);
-      _rainDummy.position.set(tx + ox, Math.max(0.15, ty + y), tz + oz);
+      const gx = Math.max(0, Math.min(N - 1, Math.floor(tx + ox)));
+      const gz = Math.max(0, Math.min(N - 1, Math.floor(tz + oz)));
+      const ground = Math.max(0, g.height[idx(gx, gz)]!);
+      const fall = (t * spd + off) % 22;
+      const y = ground + 16.5 - fall;
+      _rainDummy.position.set(tx + ox, y, tz + oz);
       _rainDummy.rotation.set(0.28, 0, 0.08);
-      _rainDummy.scale.set(1, 0.85 + rain * 0.5, 1);
+      const show = y > ground + 0.2;
+      _rainDummy.scale.set(show ? 1 : 0, show ? 0.85 + rain * 0.5 : 0, show ? 1 : 0);
       _rainDummy.updateMatrix();
       mesh.setMatrixAt(i, _rainDummy.matrix);
     }
@@ -283,7 +290,7 @@ export function Clouds() {
     const sky = skyFor(sim?.hour ?? 12);
     const rain = sim?.rain ?? 0;
     uniforms.uNight.value = sky.night;
-    uniforms.uOpacity.value = Math.max(0, 0.62 + rain * 0.2 - sky.night * 0.68);
+    uniforms.uOpacity.value = Math.max(0.14, 0.58 + rain * 0.18 - sky.night * 0.28);
     uniforms.uColor.value.setRGB(
       0.96 - rain * 0.16 - sky.night * 0.35,
       0.97 - rain * 0.14 - sky.night * 0.32,

@@ -187,6 +187,7 @@ function PlayHud() {
                 : ""}
               {snapshot.rain > 0.35 ? " · lluvia" : ""}
               {snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
+              {paused ? " · pausa" : ""}
             </p>
           </div>
           <Chip icon={<Users className="size-3.5 text-zone-r" />} value={num(snapshot.pop)} label="hab." />
@@ -336,6 +337,14 @@ function PlayHud() {
           <div className="hud-panel rounded-full px-3 py-1 text-[11px] text-danger">No se pudo guardar</div>
         ) : null}
       </div>
+
+      {paused ? (
+        <div className="pointer-events-none absolute inset-x-0 top-[4.75rem] z-20 flex justify-center max-sm:top-auto max-sm:bottom-[7.5rem]">
+          <div className="hud-panel rounded-full px-3 py-1 text-[11px] font-medium tracking-[0.14em] text-fg uppercase">
+            Pausado
+          </div>
+        </div>
+      ) : null}
 
       {panel === "budget" ? <BudgetPanel snap={snapshot} onClose={() => setPanel("none")} /> : null}
       {panel === "stats" ? <StatsPanel snap={snapshot} onClose={() => setPanel("none")} /> : null}

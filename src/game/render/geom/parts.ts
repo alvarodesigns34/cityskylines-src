@@ -152,7 +152,13 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
   }
   const merged = mergeGeometries(geos, false);
   geos.forEach((g) => g.dispose());
-  if (!merged) return new THREE.BoxGeometry(0.4, 0.4, 0.4);
+  if (!merged) {
+    const fallback = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+    const n = fallback.getAttribute("position")!.count;
+    fallback.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    fallback.setAttribute("aEmis", new THREE.BufferAttribute(new Float32Array(n), 1));
+    return fallback;
+  }
   merged.computeVertexNormals();
   merged.computeBoundingSphere();
   return merged;
