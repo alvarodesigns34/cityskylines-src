@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { MAX_HEIGHT } from "../../sim/generate";
 import { hash2 } from "../../sim/rng";
 import { roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, idx } from "../../sim/types";
@@ -152,7 +153,8 @@ export function StreetLamps() {
 
 export function Buildings() {
   const rev = useSimVersion((s) => s.buildingsVersion);
-  const material = useCityMaterial();
+  const material = useMemo(() => createCityMaterial({}, true), []);
+  useEffect(() => () => material.dispose(), [material]);
   const [lodKey, setLodKey] = useState("0,0,0");
   const lodRef = useRef(lodKey);
   lodRef.current = lodKey;
@@ -160,7 +162,7 @@ export function Buildings() {
   useFrame(() => {
     const qx = Math.round(viewTarget.x / 8);
     const qz = Math.round(viewTarget.z / 8);
-    const band = viewState.distance > 72 ? 2 : viewState.distance > 38 ? 1 : 0;
+    const band = viewState.distance > 88 ? 2 : viewState.distance > 52 ? 1 : 0;
     const key = `${qx},${qz},${band}`;
     if (key !== lodRef.current) setLodKey(key);
   });
@@ -172,14 +174,14 @@ export function Buildings() {
     const [qx, qz, band] = lodKey.split(",").map(Number);
     const cx = (qx ?? 0) * 8;
     const cz = (qz ?? 0) * 8;
-    const radius = band === 2 ? 0 : band === 1 ? 18 : 28;
+    const radius = band === 2 ? 14 : band === 1 ? 32 : 48;
     const radius2 = radius * radius;
     for (const b of sim.buildings) {
       const x = b.x + b.w / 2;
       const z = b.z + b.d / 2;
       const dx = x - cx;
       const dz = z - cz;
-      const far = radius === 0 || dx * dx + dz * dz > radius2;
+      const far = dx * dx + dz * dz > radius2;
       const v = b.variant % variantsFor(b.kind);
       const key = far ? `lod:${b.kind}` : `${b.kind}:${v}`;
       let bucket = map.get(key);
@@ -247,7 +249,7 @@ export function Vegetation() {
         if (g.tree[i]) {
           const count = 2 + (hash2(x, z, 3) > 0.55 ? 1 : 0) + (hash2(x, z, 4) > 0.82 ? 1 : 0);
           const moist = g.scenery[i]!;
-          const elev = Math.max(0, Math.min(1, h / 7));
+          const elev = Math.max(0, Math.min(1, h / MAX_HEIGHT));
           for (let k = 0; k < count; k++) {
             const jx = hash2(x * 7 + k, z, 11) - 0.5;
             const jz = hash2(x, z * 7 + k, 13) - 0.5;

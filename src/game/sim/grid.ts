@@ -130,7 +130,6 @@ export class Grid {
 
   /** Orilla, bosque y vistas. Se guarda; si falta (saves viejos) se reconstruye. */
   recomputeScenery() {
-    const MAX_HEIGHT = 7;
     this.scenery.fill(0);
     for (let z = 0; z < N; z++) {
       for (let x = 0; x < N; x++) {
@@ -156,7 +155,7 @@ export class Grid {
           }
         }
         const trees = this.tree[i] ? 0.25 : 0;
-        const view = Math.min(0.3, (this.height[i]! / MAX_HEIGHT) * 0.45);
+        const view = Math.min(0.3, Math.max(0, this.height[i]!) * 0.22);
         this.scenery[i] = Math.min(1, nearWater * 0.55 + trees + view);
       }
     }

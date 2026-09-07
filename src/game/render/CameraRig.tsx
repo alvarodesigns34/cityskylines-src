@@ -31,7 +31,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
   const { camera, gl } = useThree();
   const yaw = useRef(0.65);
   const pitch = useRef(0.85);
-  const dist = useRef(46);
+  const dist = useRef(34);
   const tx = useRef(N * 0.3);
   const tz = useRef(N * 0.5);
   const mode = useRef<"orbit" | "pan" | "paint" | null>(null);

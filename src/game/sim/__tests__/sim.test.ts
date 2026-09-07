@@ -102,6 +102,26 @@ test("el generador produce un mapa jugable con tierra, agua y entrada de autoví
   assert.ok(entry.x > 0 && entry.z > 0);
 });
 
+test("el mapa es una llanura: casi todo el suelo se puede zonificar", () => {
+  let land = 0;
+  let steep = 0;
+  let water = 0;
+  for (let s = 0; s < 24; s++) {
+    const seed = (s * 7919 + 13) >>> 0;
+    const { grid } = generateMap(seed);
+    for (let i = 0; i < N * N; i++) {
+      if (grid.terrain[i] === TERRAIN.water) {
+        water++;
+        continue;
+      }
+      land++;
+      if (grid.slope[i]! > 0.55) steep++;
+    }
+  }
+  assert.ok(water / 24 > 60, `agua media ${(water / 24).toFixed(0)}`);
+  assert.ok(steep / land < 0.08, `pendiente excesiva en ${(100 * steep / land).toFixed(1)}% del suelo`);
+});
+
 test("el reloj se mantiene dentro del día", () => {
   const sim = new CitySim(SEED);
   sim.paused = false;

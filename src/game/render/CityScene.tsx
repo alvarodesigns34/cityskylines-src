@@ -17,9 +17,9 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
   return (
     <Canvas
       className="absolute inset-0"
-      shadows="soft"
+      shadows="percentage"
       dpr={[1, 2]}
-      camera={{ fov: 40, near: 0.5, far: 2200, position: [30, 34, 52] }}
+      camera={{ fov: 40, near: 0.5, far: 2200, position: [30, 28, 46] }}
       gl={{
         antialias: true,
         powerPreference: "high-performance",
@@ -28,7 +28,8 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
       }}
       onCreated={({ gl, scene }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
-        gl.toneMappingExposure = 1.12;
+        gl.toneMappingExposure = 1.08;
+        gl.shadowMap.type = THREE.PCFShadowMap;
         scene.background = null;
         gl.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
       }}

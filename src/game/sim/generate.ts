@@ -1,5 +1,5 @@
 import { Grid } from "./grid";
-import { CITY_NAMES, fbm, hash2, mulberry32, ridged } from "./rng";
+import { CITY_NAMES, fbm, hash2, mulberry32 } from "./rng";
 import { N, ROAD, TERRAIN, idx } from "./types";
 
 export interface MapGen {
@@ -10,8 +10,8 @@ export interface MapGen {
 }
 
 export const WATER_LEVEL = 0;
-/** Altura máxima del terreno en unidades de mundo (1 unidad = 1 casilla). */
-export const MAX_HEIGHT = 7;
+/** Altura máxima del terreno. El mapa es una llanura suave: se construye en casi todas partes. */
+export const MAX_HEIGHT = 1.45;
 
 function smoothstep(a: number, b: number, t: number): number {
   const x = Math.max(0, Math.min(1, (t - a) / (b - a)));
@@ -19,78 +19,53 @@ function smoothstep(a: number, b: number, t: number): number {
 }
 
 /**
- * Genera un mapa 64×64 con relieve real: valle central habitable, colinas al norte,
- * sierra en una esquina, río meandriforme con afluente, lago y costa al sur.
- * El relieve no es solo decorativo: `slope` bloquea la construcción, encarece las vías
- * y alimenta el valor del suelo a través de `scenery`.
+ * Llanura jugable 64×64: ondulaciones suaves, un lago (a veces un estanque extra) y arboledas.
+ * El relieve ya no bloquea manzanas enteras; las orillas se rampa para que la pendiente
+ * junto al agua siga siendo zonificable un par de casillas más adentro.
  */
 export function generateMap(seed: number): MapGen {
   const rand = mulberry32(seed);
   const name = CITY_NAMES[Math.floor(rand() * CITY_NAMES.length)] ?? "Riverside";
   const g = new Grid();
-
   const s = seed & 0xffff;
-  // Orientación del relieve: qué esquina lleva la sierra.
-  const ridgeX = rand() < 0.5 ? 0.12 : 0.88;
-  const ridgeZ = 0.14 + rand() * 0.18;
-  const riverBase = 0.34 + rand() * 0.32;
-  const riverAmp = 4 + rand() * 5;
-  const riverPhase = rand() * 6.28;
-  const lakeX = 0.16 + rand() * 0.2;
-  const lakeZ = 0.62 + rand() * 0.2;
-  const lakeR = 3.4 + rand() * 2.4;
 
-  const riverCenter = (z: number) =>
-    riverBase * N + Math.sin(z * 0.09 + riverPhase) * riverAmp + Math.sin(z * 0.031 + 1.7) * (riverAmp * 0.5);
-
-  const elevation = (x: number, z: number): number => {
-    const nx = x / N;
-    const nz = z / N;
-    // Landform amplio.
-    let e = fbm(x / 26, z / 26, s, 4) * 0.85 + fbm(x / 9, z / 9, s + 31, 3) * 0.15;
-    e = Math.pow(e, 1.35);
-    // Sierra en una esquina.
-    const ridgeMask = smoothstep(0.42, 0.0, Math.hypot(nx - ridgeX, nz - ridgeZ) * 1.5);
-    e += ridged(x / 13, z / 13, s + 77, 4) * ridgeMask * 0.85;
-    // Caída hacia la costa sur.
-    e *= smoothstep(0.0, 0.22, 1 - nz) * 0.55 + 0.45;
-    e -= smoothstep(0.74, 1.0, nz) * 0.55;
-    // Bordes del mapa ligeramente bajos, para que la costa se lea.
-    const edge = Math.min(nx, 1 - nx, nz, 1 - nz);
-    e -= smoothstep(0.06, 0.0, edge) * 0.12;
-    return e * MAX_HEIGHT - 0.9;
-  };
+  // El lago se aleja del borde oeste (autovía) para no comerse la entrada.
+  const lakeX = 18 + rand() * 28;
+  const lakeZ = 14 + rand() * 36;
+  const lakeR = 5.2 + rand() * 2.4;
+  const pond = rand() > 0.4;
+  const pondX = 10 + rand() * 44;
+  const pondZ = 8 + rand() * 48;
+  const pondR = 2.2 + rand() * 1.1;
 
   for (let z = 0; z < N; z++) {
     for (let x = 0; x < N; x++) {
       const i = idx(x, z);
-      let e = elevation(x, z);
+      const nx = x / N;
+      const nz = z / N;
+      const rolls = fbm(x / 42, z / 42, s, 3) * 0.7 + fbm(x / 16, z / 16, s + 31, 2) * 0.3;
+      const edge = Math.min(nx, 1 - nx, nz, 1 - nz);
+      const inland = smoothstep(0.03, 0.1, edge);
+      let e = WATER_LEVEL + 0.38 + rolls * 0.55 * inland;
 
-      // Cauce principal.
-      const cx = riverCenter(z);
-      const halfW = 1.5 + Math.sin(z * 0.14 + 0.6) * 0.5 + (z / N) * 1.6;
-      const dRiver = Math.abs(x - cx);
-      if (dRiver < halfW + 3.5) {
-        const carve = smoothstep(halfW + 3.5, halfW * 0.4, dRiver);
-        e = e * (1 - carve) + (WATER_LEVEL - 1.1) * carve;
+      const dLake = Math.hypot(x - lakeX, z - lakeZ);
+      if (dLake < lakeR + 4.2) {
+        const carve = smoothstep(lakeR + 4.2, lakeR * 0.55, dLake);
+        e = e * (1 - carve) + (WATER_LEVEL - 0.85) * carve;
       }
-      // Afluente que baja desde la sierra.
-      const tribZ = ridgeZ * N + (x - ridgeX * N) * 0.55;
-      const dTrib = Math.abs(z - tribZ);
-      if (x > Math.min(ridgeX * N, cx) - 2 && x < Math.max(ridgeX * N, cx) + 2 && dTrib < 4) {
-        const carve = smoothstep(4, 0.8, dTrib) * 0.75;
-        e = e * (1 - carve) + (WATER_LEVEL - 0.7) * carve;
+      if (pond) {
+        const dPond = Math.hypot(x - pondX, z - pondZ);
+        if (dPond < pondR + 2.4) {
+          const carve = smoothstep(pondR + 2.4, pondR * 0.5, dPond);
+          e = e * (1 - carve) + (WATER_LEVEL - 0.55) * carve;
+        }
       }
-      // Lago.
-      const dLake = Math.hypot(x - lakeX * N, z - lakeZ * N);
-      if (dLake < lakeR + 3) {
-        const carve = smoothstep(lakeR + 3, lakeR * 0.5, dLake);
-        e = e * (1 - carve) + (WATER_LEVEL - 1.4) * carve;
-      }
-
       g.height[i] = e;
     }
   }
+
+  // Dos pasadas de suavizado: las orillas quedan en playa, no en acantilado.
+  blurLand(g, 2);
 
   g.recomputeSlope();
 
@@ -98,33 +73,29 @@ export function generateMap(seed: number): MapGen {
     for (let x = 0; x < N; x++) {
       const i = idx(x, z);
       const e = g.height[i]!;
-      const slope = g.slope[i]!;
       let terrain: number = TERRAIN.grass;
       if (e < WATER_LEVEL) terrain = TERRAIN.water;
-      else if (e < WATER_LEVEL + 0.38) terrain = TERRAIN.sand;
-      else if (e > MAX_HEIGHT * 0.58 && slope > 0.3) terrain = TERRAIN.rock;
+      else if (e < WATER_LEVEL + 0.28) terrain = TERRAIN.sand;
       g.terrain[i] = terrain;
 
-      // Bosques: masa de ruido, evitando roca desnuda y cotas altas.
-      const forest = fbm(x / 11, z / 11, s + 211, 3);
-      const dense = forest > 0.56 && terrain === TERRAIN.grass && e < MAX_HEIGHT * 0.72;
-      g.tree[i] = dense && hash2(x, z, s + 5) > 0.42 ? 1 : 0;
+      const grove = fbm(x / 13, z / 13, s + 211, 3);
+      const inGrove = grove > 0.6 && terrain === TERRAIN.grass;
+      g.tree[i] = inGrove && hash2(x, z, s + 5) > 0.55 ? 1 : 0;
     }
   }
 
-  // Valor escénico: cerca del agua, arbolado y con vistas.
   g.recomputeScenery();
 
-  // Entrada de autovía: por el borde oeste, a la altura más llana disponible.
+  // Autovía por el oeste, en la franja más seca y llana.
   let bestZ = Math.floor(N / 2);
   let bestScore = -Infinity;
-  for (let z = 6; z < N - 6; z++) {
+  for (let z = 8; z < N - 8; z++) {
     let score = 0;
-    for (let x = 0; x < 10; x++) {
+    for (let x = 0; x < 12; x++) {
       const i = idx(x, z);
-      if (g.terrain[i] === TERRAIN.water) score -= 10;
-      score -= g.slope[i]! * 6;
-      score += Math.min(g.height[i]!, 2);
+      if (g.terrain[i] === TERRAIN.water) score -= 14;
+      score -= g.slope[i]! * 4;
+      score += Math.min(g.height[i]!, 1.2);
     }
     if (score > bestScore) {
       bestScore = score;
@@ -133,22 +104,22 @@ export function generateMap(seed: number): MapGen {
   }
   const hz = bestZ;
   const runway = 10;
-  // Explanada ancha bajo la autovía. La pendiente de cada casilla se calcula con los
-  // vecinos, así que hay que aplanar un bermón, no solo las dos filas de asfalto:
-  // si no, en semillas con sierra o río cerca la entrada queda impracticable.
   let base = 0;
-  for (let x = 0; x < runway; x++) base += Math.max(g.height[idx(x, hz)]!, WATER_LEVEL + 0.55);
+  for (let x = 0; x < runway; x++) base += Math.max(g.height[idx(x, hz)]!, WATER_LEVEL + 0.4);
   base /= runway;
-  base = Math.max(WATER_LEVEL + 0.5, Math.min(base, WATER_LEVEL + 2.4));
-  for (let x = 0; x < runway + 5; x++) {
-    for (let dz = -4; dz <= 5; dz++) {
+  base = Math.max(WATER_LEVEL + 0.4, Math.min(base, WATER_LEVEL + 0.85));
+  for (let x = 0; x < runway + 3; x++) {
+    for (let dz = -3; dz <= 4; dz++) {
       const z = hz + dz;
       const i = g.at(x, z);
       if (i < 0) continue;
-      const radial = Math.max(Math.abs(dz) / 4.2, Math.max(0, x - (runway - 1)) / 5);
-      const blend = smoothstep(1.05, 0.12, radial);
+      const radial = Math.max(Math.abs(dz) / 3.4, Math.max(0, x - (runway - 1)) / 3);
+      const blend = smoothstep(1.0, 0.1, radial);
       g.height[i] = g.height[i]! * (1 - blend) + base * blend;
-      if (blend > 0.4 && g.terrain[i] === TERRAIN.water) g.terrain[i] = TERRAIN.sand;
+      if (blend > 0.35 && g.terrain[i] === TERRAIN.water) {
+        g.terrain[i] = TERRAIN.sand;
+        g.tree[i] = 0;
+      }
     }
   }
   for (let x = 0; x < runway; x++) {
@@ -162,21 +133,44 @@ export function generateMap(seed: number): MapGen {
     }
   }
   g.recomputeSlope();
-  // Segunda pasada: si algún vecino todavía tira de la pendiente, se aplana más.
-  for (let x = 0; x < runway; x++) {
-    for (const z of [hz, hz + 1]) {
-      const i = g.at(x, z);
-      if (i < 0) continue;
-      if (g.slope[i]! > 0.38) {
-        for (let dz = -2; dz <= 3; dz++) {
-          const j = g.at(x, z + dz);
-          if (j >= 0) g.height[j] = g.height[j]! * 0.25 + base * 0.75;
+
+  return { grid: g, name, entry: { x: runway, z: hz } };
+}
+
+/** Media con vecinos: aplana saltos locales sin borrar el vaso del lago. */
+function blurLand(g: Grid, passes: number) {
+  const tmp = new Float32Array(g.height);
+  for (let p = 0; p < passes; p++) {
+    const src = p % 2 === 0 ? g.height : tmp;
+    const dst = p % 2 === 0 ? tmp : g.height;
+    for (let z = 0; z < N; z++) {
+      for (let x = 0; x < N; x++) {
+        const i = idx(x, z);
+        if (src[i]! < WATER_LEVEL - 0.15) {
+          dst[i] = src[i]!;
+          continue;
         }
-        g.height[i] = base;
+        let sum = src[i]! * 2;
+        let w = 2;
+        if (x > 0) {
+          sum += src[i - 1]!;
+          w++;
+        }
+        if (x < N - 1) {
+          sum += src[i + 1]!;
+          w++;
+        }
+        if (z > 0) {
+          sum += src[i - N]!;
+          w++;
+        }
+        if (z < N - 1) {
+          sum += src[i + N]!;
+          w++;
+        }
+        dst[i] = sum / w;
       }
     }
   }
-  g.recomputeSlope();
-
-  return { grid: g, name, entry: { x: runway, z: hz } };
+  if (passes % 2 === 1) g.height.set(tmp);
 }

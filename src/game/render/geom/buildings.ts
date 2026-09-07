@@ -161,8 +161,17 @@ function house(ctx: Ctx): Part[] {
   out.push(box(0, 0.04, 0, hw * 2 + 0.16, 0.08, hd * 2 + 0.16, ctx.p.base));
   out.push(box(0, bodyH / 2 + 0.06, 0, hw * 2, bodyH, hd * 2, ctx.wall));
   allFacades(out, ctx, hw, hd, 0.06, floors, fh, "grid");
+  // Sillería en las esquinas: la caja deja de leerse como un único prisma.
+  const qh = bodyH * 0.94;
+  const qt = 0.055;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      out.push(box(sx * hw, qh / 2 + 0.06, sz * hd, qt, qh, qt, shade(ctx.p.trim, -0.05)));
+    }
+  }
 
   const roofY = bodyH + 0.06;
+  out.push(box(0, roofY + 0.015, 0, hw * 2 + 0.22, 0.04, hd * 2 + 0.22, shade(ctx.p.trim, -0.06)));
   if (roofKind === "gable") {
     out.push({ g: "gable", x: 0, y: roofY, z: 0, sx: hw * 2 + 0.34, sy: 0.46 + ctx.rnd(3) * 0.22, sz: hd * 2 + 0.28, color: ctx.p.roof, ry: ctx.rnd(4) > 0.5 ? Math.PI / 2 : 0 });
   } else if (roofKind === "hip") {
@@ -172,6 +181,9 @@ function house(ctx: Ctx): Part[] {
   }
   out.push(box(hw * (ctx.rnd(6) - 0.5), roofY + 0.36, -hd * 0.3, 0.12, 0.44, 0.12, shade(ctx.p.roof, -0.08)));
   out.push(box(0, 0.06 + fh * 0.34, -hd - 0.02, 0.2, fh * 0.62, 0.05, ctx.p.accent));
+  out.push(box(0, 0.06 + fh * 0.68, -hd - 0.035, 0.26, 0.045, 0.04, ctx.p.trim));
+  out.push(box(-0.12, 0.06 + fh * 0.34, -hd - 0.03, 0.035, fh * 0.64, 0.03, ctx.p.trim));
+  out.push(box(0.12, 0.06 + fh * 0.34, -hd - 0.03, 0.035, fh * 0.64, 0.03, ctx.p.trim));
   const hedge = 0.9;
   out.push(box(0, 0.12, -ctx.d / 2 + 0.08, ctx.w * hedge, 0.16, 0.1, 0x3d7a38));
   out.push(box(0, 0.045, -ctx.d / 2 + 0.2, 0.18, 0.03, 0.32, 0x9a9080));
@@ -371,7 +383,9 @@ function civic(ctx: Ctx): Part[] {
   const porchZ = -hd - 0.22;
   for (let i = 0; i < cols; i++) {
     const x = -hw * 0.85 + ((hw * 1.7) / (cols - 1)) * i;
-    out.push(cyl(x, 0.12 + fh * 0.85, porchZ, 0.06, fh * 1.7, ctx.p.trim, { seg: 7 }));
+    out.push(cyl(x, 0.16, porchZ, 0.078, 0.08, ctx.p.trim, { seg: 10 }));
+    out.push(cyl(x, 0.12 + fh * 0.85, porchZ, 0.055, fh * 1.7, ctx.p.trim, { seg: 10 }));
+    out.push(cyl(x, 0.12 + fh * 1.68, porchZ, 0.08, 0.07, ctx.p.trim, { seg: 10 }));
   }
   out.push(box(0, 0.12 + fh * 1.78, porchZ, hw * 1.95, 0.16, 0.42, ctx.p.trim));
   out.push(box(0, 0.12 + fh * 0.75, -hd - 0.02, hw * 0.6, fh * 1.3, 0.06, ctx.p.window, { emis: 0.6 }));
@@ -391,7 +405,7 @@ function civic(ctx: Ctx): Part[] {
   return out;
 }
 
-function plant(ctx: Ctx): Part[] {
+function plant(ctx: Ctx, kind: string): Part[] {
   const out: Part[] = [];
   const fill = ctx.style.fill ?? 0.92;
   const hw = (ctx.w * fill) / 2;
@@ -427,8 +441,10 @@ function plant(ctx: Ctx): Part[] {
     const z = -hd * 0.55 + i * ((hd * 1.1) / Math.max(1, tanks - 1));
     const r = Math.min(0.34, hw * (0.26 + ctx.rnd(42 + i) * 0.08));
     const hh = h * (0.7 + ctx.rnd(43 + i) * 0.35);
-    out.push(cyl(x, 0.1 + hh * 0.5, z, r, hh, shade(ctx.p.trim, -0.04), { seg: 10 }));
-    out.push(cyl(x, 0.1 + hh, z, r * 1.06, 0.08, ctx.p.accent, { seg: 10 }));
+    out.push(cyl(x, 0.1 + hh * 0.5, z, r, hh, shade(ctx.p.trim, -0.04), { seg: 12 }));
+    out.push(cyl(x, 0.1 + hh, z, r * 1.06, 0.08, ctx.p.accent, { seg: 12 }));
+    out.push(cyl(x, 0.1 + hh * 0.35, z, r * 1.08, 0.04, shade(ctx.p.base, -0.08), { seg: 12 }));
+    out.push(cyl(x, 0.1 + hh * 0.7, z, r * 1.08, 0.04, shade(ctx.p.base, -0.08), { seg: 12 }));
   }
   // Anejo bajo en algunas variantes: rompe la silueta de "dos silos y una caja".
   if (ctx.rnd(44) > 0.4) {
@@ -439,6 +455,19 @@ function plant(ctx: Ctx): Part[] {
   }
   out.push(box(hw * 0.1 * flip, 0.1 + h * 0.78, 0, hw * 0.9, 0.07, 0.12, 0x8a9095));
   out.push(box(-hw * 0.35 * flip, 0.1 + h * 0.5, -bodyD / 2 - 0.06, bodyW * 0.9, 0.05, 0.1, 0x8a9095));
+  out.push(box(-hw * 0.05 * flip, 0.1 + h * 0.92, 0, hw * 1.35, 0.035, 0.16, 0x6a7076));
+  out.push(box(-hw * 0.05 * flip, 0.1 + h * 0.78, 0, 0.05, h * 0.28, 0.05, 0x8a9095));
+
+  if (kind === "power_coal") {
+    const tx = hw * 0.55 * -flip;
+    for (const tz of [-hd * 0.42, hd * 0.42] as const) {
+      out.push({ g: "cyl", x: tx, y: 1.02, z: tz, sx: 0.2, sy: 1.75, sz: 0.38, color: shade(ctx.p.base, 0.06), seg: 14 });
+      out.push(cyl(tx, 1.9, tz, 0.22, 0.1, shade(ctx.p.trim, 0.08), { seg: 14 }));
+      out.push(cyl(tx, 0.12, tz, 0.4, 0.12, shade(ctx.p.base, -0.08), { seg: 12 }));
+    }
+    out.push(box(0, 0.22, hd * 0.72, 0.42, 0.36, 0.28, shade(ctx.p.trim, -0.1)));
+    out.push(box(0.22, 0.38, hd * 0.72, 0.08, 0.22, 0.08, 0x8a9095));
+  }
   addChimneys(out, ctx, hw, hd, h + 0.2);
   return out;
 }
@@ -450,8 +479,10 @@ function addChimneys(out: Part[], ctx: Ctx, hw: number, hd: number, y: number) {
     const z = hd * (0.2 + ctx.rnd(i + 30) * 0.5);
     const hh = 1.1 + ctx.rnd(i + 31) * 1.5;
     const r = 0.09 + ctx.rnd(i + 32) * 0.06;
-    out.push(cyl(x, y + hh / 2, z, r, hh, shade(ctx.p.base, -0.05), { seg: 8 }));
-    out.push(cyl(x, y + hh - 0.05, z, r * 1.16, 0.12, shade(ctx.p.accent, -0.1), { seg: 8 }));
+    out.push(cyl(x, y + hh / 2, z, r, hh, shade(ctx.p.base, -0.05), { seg: 10 }));
+    out.push(cyl(x, y + hh - 0.05, z, r * 1.16, 0.12, shade(ctx.p.accent, -0.1), { seg: 10 }));
+    out.push(cyl(x, y + hh * 0.38, z, r * 1.1, 0.045, shade(ctx.p.trim, -0.12), { seg: 10 }));
+    out.push(cyl(x, y + hh * 0.68, z, r * 1.1, 0.045, shade(ctx.p.trim, -0.12), { seg: 10 }));
     // Baliza roja.
     out.push({ g: "sphere", x, y: y + hh + 0.06, z, sx: r * 0.42, sy: 0, sz: 0, color: 0xff4a3a, emis: 1, seg: 6 });
   }
@@ -480,8 +511,9 @@ function flat(ctx: Ctx, kind: string): Part[] {
       const x = (ctx.rnd(i) - 0.5) * W * 0.6;
       const z = (ctx.rnd(i + 5) - 0.5) * D * 0.6;
       const hh = 2.1 + ctx.rnd(i + 9) * 0.7;
-      out.push(cyl(x, hh / 2, z, 0.05, hh, 0xeceae4, { seg: 7 }));
+      out.push(cyl(x, hh / 2, z, 0.05, hh, 0xeceae4, { seg: 10 }));
       out.push(box(x, hh + 0.05, z, 0.16, 0.13, 0.24, 0xdedad2));
+      out.push({ g: "sphere", x, y: hh + 0.06, z: z + 0.04, sx: 0.08, sy: 0, sz: 0, color: 0xc8c4bc, seg: 8 });
       for (let b = 0; b < 3; b++) {
         const a = (b / 3) * Math.PI * 2 + ctx.rnd(i + 2) * 3;
         out.push(box(x + Math.cos(a) * 0.42, hh + 0.05 + Math.sin(a) * 0.42, z + 0.14, 0.86, 0.07, 0.03, 0xf2f0ea, { rz: a }));
@@ -498,6 +530,8 @@ function flat(ctx: Ctx, kind: string): Part[] {
       out.push({ g: "cone", x, y: s * 0.4, z, sx: s * 0.75, sy: s * 0.8, sz: s * 0.75, color: i % 2 ? 0x7d7566 : 0x6a6a58, seg: 6 });
     }
     out.push(box(0, 0.22, -D / 2 + 0.1, W * 0.9, 0.36, 0.05, 0x8a8f7a));
+    out.push(box(W * 0.28, 0.22, D * 0.32, 0.55, 0.36, 0.32, 0x6a6860));
+    out.push(box(W * 0.28, 0.42, D * 0.32, 0.38, 0.12, 0.22, 0x8a9095));
     return out;
   }
   // Parques y plazas.
@@ -530,11 +564,25 @@ function waterTower(ctx: Ctx): Part[] {
   const out: Part[] = [];
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    out.push(cyl(Math.cos(a) * 0.16, 0.42, Math.sin(a) * 0.16, 0.028, 0.84, 0x8a9095, { seg: 5 }));
+    out.push(cyl(Math.cos(a) * 0.16, 0.42, Math.sin(a) * 0.16, 0.028, 0.84, 0x8a9095, { seg: 8 }));
   }
-  out.push(cyl(0, 0.86, 0, 0.3, 0.14, 0x8a9095, { seg: 12 }));
-  out.push(cyl(0, 1.14, 0, 0.3, 0.44, ctx.p.accent, { seg: 12 }));
-  out.push({ g: "cone", x: 0, y: 1.5, z: 0, sx: 0.33, sy: 0.24, sz: 0.33, color: shade(ctx.p.accent, -0.12), seg: 12 });
+  out.push(cyl(0, 0.86, 0, 0.3, 0.14, 0x8a9095, { seg: 16 }));
+  out.push(cyl(0, 1.14, 0, 0.3, 0.44, ctx.p.accent, { seg: 16 }));
+  out.push(cyl(0, 1.02, 0, 0.315, 0.035, shade(ctx.p.trim, -0.08), { seg: 16 }));
+  out.push(cyl(0, 1.26, 0, 0.315, 0.035, shade(ctx.p.trim, -0.08), { seg: 16 }));
+  out.push({
+    g: "torus",
+    x: 0,
+    y: 0.94,
+    z: 0,
+    sx: 0.33,
+    sy: 0.016,
+    sz: 0.33,
+    color: 0x8a9095,
+    rx: Math.PI / 2,
+    seg: 16,
+  });
+  out.push({ g: "cone", x: 0, y: 1.5, z: 0, sx: 0.33, sy: 0.24, sz: 0.33, color: shade(ctx.p.accent, -0.12), seg: 16 });
   out.push({ g: "sphere", x: 0, y: 1.66, z: 0, sx: 0.05, sy: 0, sz: 0, color: 0xff4a3a, emis: 1, seg: 6 });
   return out;
 }
@@ -560,7 +608,7 @@ export function partsForBuilding(kind: string, variant: number): Part[] {
     case "civic":
       return civic(ctx);
     case "plant":
-      return plant(ctx);
+      return plant(ctx, kind);
     default:
       return flat(ctx, kind);
   }
@@ -590,13 +638,20 @@ export function lodGeometry(kind: string): THREE.BufferGeometry {
   const fill = ctx.style.fill ?? 0.8;
   const hw = (ctx.w * fill) / 2;
   const hd = (ctx.d * fill) / 2;
-  if (ctx.style.shape === "flat") {
+  if (kind === "water_tower") {
+    g = mergeParts([
+      cyl(0, 0.55, 0, 0.28, 1.1, ctx.p.accent, { seg: 8 }),
+      { g: "cone", x: 0, y: 1.22, z: 0, sx: 0.3, sy: 0.22, sz: 0.3, color: shade(ctx.p.accent, -0.1), seg: 8 },
+    ]);
+  } else if (ctx.style.shape === "flat") {
     g = mergeParts([box(0, 0.07, 0, hw * 2, 0.14, hd * 2, ctx.wall)]);
   } else {
     const h = Math.max(0.7, ctx.style.floors * ctx.style.floorH);
     g = mergeParts([
+      box(0, 0.04, 0, hw * 2 + 0.1, 0.08, hd * 2 + 0.1, ctx.p.base),
       box(0, h / 2 + 0.05, 0, hw * 2, h, hd * 2, ctx.wall),
-      box(0, h + 0.1, 0, hw * 2 + 0.08, 0.1, hd * 2 + 0.08, ctx.p.roof),
+      box(0, h + 0.12, 0, hw * 2 + 0.1, 0.12, hd * 2 + 0.1, ctx.p.roof),
+      box(0, 0.05 + ctx.style.floorH * 0.5, 0, hw * 2 + 0.04, ctx.style.floorH, hd * 2 + 0.04, shade(ctx.wall, -0.08)),
     ]);
   }
   cache.set(key, g);

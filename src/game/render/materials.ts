@@ -29,6 +29,7 @@ const CITY_GLSL = {
          uniform vec3 uLampColor;
          uniform float uRain;
          uniform float uTime;
+         uniform float uFacade;
          varying float vEmis;
          varying vec3 vWorldPos;
          varying vec3 vWorldN;
@@ -36,16 +37,44 @@ const CITY_GLSL = {
            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
          }`,
   colorFrag: `#include <color_fragment>
-         float ao = mix(0.58, 1.0, pow(clamp(vWorldN.y * 0.55 + 0.45, 0.0, 1.0), 0.75));
+         vec3 wn = normalize(vWorldN);
+         float ao = mix(0.58, 1.0, pow(clamp(wn.y * 0.55 + 0.45, 0.0, 1.0), 0.75));
          float n = hash12(floor(vWorldPos.xz * 7.0));
          float n2 = hash12(vWorldPos.xz * 1.13);
          diffuseColor.rgb *= ao * (0.92 + n * 0.1 + n2 * 0.05);
          float wet = clamp(uRain * 0.7 + uNight * 0.1, 0.0, 0.75);
          diffuseColor.rgb *= 1.0 - wet * 0.18;
          vec3 viewDir = normalize(cameraPosition - vWorldPos);
-         float ndv = max(dot(normalize(vWorldN), viewDir), 0.0);
+         float ndv = max(dot(wn, viewDir), 0.0);
          float rim = pow(1.0 - ndv, 2.8);
-         diffuseColor.rgb += vec3(0.55, 0.62, 0.78) * rim * (0.05 + uNight * 0.08);`,
+         diffuseColor.rgb += vec3(0.55, 0.62, 0.78) * rim * (0.05 + uNight * 0.08);
+
+         // Fachada procedural: ladrillo, juntas de panel, teja y suciedad en el zócalo.
+         // El follaje pasa uFacade=0 para no pintar ladrillo en las copas.
+         float facade = uFacade * (1.0 - smoothstep(0.12, 0.32, vEmis));
+         float isRoof = smoothstep(0.58, 0.86, abs(wn.y));
+         float wall = facade * (1.0 - isRoof);
+         float brickU = mix(vWorldPos.z, vWorldPos.x, step(abs(wn.x), abs(wn.z))) * 8.6;
+         float brickV = vWorldPos.y * 13.5;
+         float row = floor(brickV);
+         float bx = fract(brickU + mod(row, 2.0) * 0.5);
+         float by = fract(brickV);
+         float mortar = 1.0 - smoothstep(0.045, 0.09, min(min(bx, 1.0 - bx), min(by, 1.0 - by) * 1.55));
+         vec3 brickVar = mix(vec3(1.0), vec3(0.82, 0.78, 0.72), hash12(floor(vec2(brickU, brickV))));
+         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * brickVar, wall * 0.28);
+         diffuseColor.rgb *= 1.0 - mortar * wall * 0.16;
+         float panelY = abs(fract(vWorldPos.y * 1.15) - 0.5);
+         float panelX = min(abs(fract(vWorldPos.x * 2.2) - 0.5), abs(fract(vWorldPos.z * 2.2) - 0.5));
+         float groove = (1.0 - smoothstep(0.0, 0.035, panelY)) * 0.14
+                      + (1.0 - smoothstep(0.0, 0.028, panelX)) * 0.08;
+         diffuseColor.rgb *= 1.0 - groove * wall * 0.85;
+         float tile = abs(fract(vWorldPos.x * 5.5 + vWorldPos.z * 5.5) - 0.5)
+                    + abs(fract((vWorldPos.x - vWorldPos.z) * 4.2) - 0.5);
+         diffuseColor.rgb *= mix(1.0, 0.86 + 0.16 * smoothstep(0.08, 0.4, tile), isRoof * facade);
+         float grime = exp(-max(vWorldPos.y, 0.0) * 1.55) * 0.2;
+         diffuseColor.rgb *= 1.0 - grime * facade;
+         float glass = smoothstep(0.08, 0.28, vEmis) * uFacade;
+         diffuseColor.rgb = mix(diffuseColor.rgb, mix(diffuseColor.rgb, vec3(0.42, 0.56, 0.66), 0.4), glass);`,
   roughnessFrag: `#include <roughnessmap_fragment>
          roughnessFactor = mix(roughnessFactor, 0.14, clamp(uRain * 0.72 + uNight * 0.1, 0.0, 0.78));
          roughnessFactor = mix(roughnessFactor, 0.16, smoothstep(0.12, 0.7, vEmis));`,
@@ -60,11 +89,12 @@ const CITY_GLSL = {
          diffuseColor.rgb = mix(diffuseColor.rgb, warm * 0.55, lit * 0.38);`,
 };
 
-function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind = false) {
+function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind = false, facade = 0) {
   shader.uniforms.uNight = cityUniforms.uNight;
   shader.uniforms.uLampColor = cityUniforms.uLampColor;
   shader.uniforms.uRain = cityUniforms.uRain;
   shader.uniforms.uTime = cityUniforms.uTime;
+  shader.uniforms.uFacade = { value: wind ? 0 : facade };
   const begin = wind
     ? `#include <begin_vertex>
          vEmis = aEmis;
@@ -86,7 +116,7 @@ function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind 
       "#include <color_vertex>",
       `#include <color_vertex>
          #if defined(USE_INSTANCING_COLOR) && defined(USE_COLOR)
-         if (aEmis > 0.45) vColor = color;
+         if (aEmis > 0.45) vColor.xyz = color;
          #endif`,
     )
     .replace("#include <begin_vertex>", begin)
@@ -108,15 +138,15 @@ function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind 
  * AO falso, ruido de mundo y mojado viven aquí para que edificios, calles y coches
  * compartan el mismo look sin un segundo pase.
  */
-export function createCityMaterial(params: THREE.MeshStandardMaterialParameters = {}) {
+export function createCityMaterial(params: THREE.MeshStandardMaterialParameters = {}, facade = false) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.72,
     metalness: 0.06,
     ...params,
   });
-  mat.onBeforeCompile = (shader) => patchCityShader(shader, false);
-  mat.customProgramCacheKey = () => "city-pbr-v4";
+  mat.onBeforeCompile = (shader) => patchCityShader(shader, false, facade ? 1 : 0);
+  mat.customProgramCacheKey = () => (facade ? "city-pbr-v7-facade" : "city-pbr-v7");
   return mat;
 }
 
@@ -129,7 +159,7 @@ export function createFoliageMaterial(params: THREE.MeshStandardMaterialParamete
     ...params,
   });
   mat.onBeforeCompile = (shader) => patchCityShader(shader, true);
-  mat.customProgramCacheKey = () => "city-foliage-v2";
+  mat.customProgramCacheKey = () => "city-foliage-v3";
   return mat;
 }
 
@@ -200,7 +230,9 @@ export function createTerrainMaterial() {
          vec3 clover = vec3(0.2, 0.39, 0.19);
          float dryness = smoothstep(0.34, 0.76, n);
          diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.34);
-         diffuseColor.rgb *= 0.82 + n2 * 0.2 + n3 * 0.1 + (n4 - 0.5) * 0.1;
+         diffuseColor.rgb *= 0.84 + n2 * 0.18 + n3 * 0.1 + (n4 - 0.5) * 0.14;
+         float blades = abs(sin(vWorldPos.x * 38.0) * sin(vWorldPos.z * 34.0));
+         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.78, 0.92, 0.7), blades * 0.12 * (1.0 - dryness));
          float ao = mix(0.68, 1.0, clamp(vWorldN.y, 0.0, 1.0));
          diffuseColor.rgb *= ao;
          float wet = clamp(uRain, 0.0, 1.0);
@@ -214,7 +246,7 @@ export function createTerrainMaterial() {
          roughnessFactor -= n4 * 0.08;`,
       );
   };
-  mat.customProgramCacheKey = () => "terrain-noise-v1";
+  mat.customProgramCacheKey = () => "terrain-noise-v2";
   return mat;
 }
 

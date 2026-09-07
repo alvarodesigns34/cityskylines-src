@@ -18,11 +18,11 @@ export function treeGeometry(species: 0 | 1 | 2 | 3 | 4): THREE.BufferGeometry {
     const out: Part[] = [];
     if (species === 0) {
       out.push(cyl(0, 0.2, 0, 0.048, 0.4, 0x6b5344, { seg: 6 }));
-      out.push({ g: "sphere", x: 0, y: 0.58, z: 0, sx: 0.28, sy: 0, sz: 0, color: 0x2f6e38, seg: 8 });
-      out.push({ g: "sphere", x: 0.14, y: 0.46, z: 0.1, sx: 0.18, sy: 0, sz: 0, color: 0x3d8244, seg: 7 });
-      out.push({ g: "sphere", x: -0.13, y: 0.5, z: -0.09, sx: 0.16, sy: 0, sz: 0, color: 0x276332, seg: 7 });
-      out.push({ g: "sphere", x: 0.06, y: 0.7, z: -0.08, sx: 0.14, sy: 0, sz: 0, color: 0x45884a, seg: 6 });
-      out.push({ g: "sphere", x: -0.08, y: 0.38, z: 0.12, sx: 0.13, sy: 0, sz: 0, color: 0x356f3c, seg: 6 });
+      out.push({ g: "sphere", x: 0, y: 0.58, z: 0, sx: 0.28, sy: 0, sz: 0, color: 0x2f6e38, seg: 10 });
+      out.push({ g: "sphere", x: 0.14, y: 0.46, z: 0.1, sx: 0.18, sy: 0, sz: 0, color: 0x3d8244, seg: 9 });
+      out.push({ g: "sphere", x: -0.13, y: 0.5, z: -0.09, sx: 0.16, sy: 0, sz: 0, color: 0x276332, seg: 9 });
+      out.push({ g: "sphere", x: 0.06, y: 0.7, z: -0.08, sx: 0.14, sy: 0, sz: 0, color: 0x45884a, seg: 8 });
+      out.push({ g: "sphere", x: -0.08, y: 0.38, z: 0.12, sx: 0.13, sy: 0, sz: 0, color: 0x356f3c, seg: 8 });
     } else if (species === 1) {
       out.push(cyl(0, 0.16, 0, 0.042, 0.32, 0x5c463a, { seg: 6 }));
       out.push({ g: "cone", x: 0, y: 0.38, z: 0, sx: 0.26, sy: 0.4, sz: 0.26, color: 0x245834, seg: 8 });
