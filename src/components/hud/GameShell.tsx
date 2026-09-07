@@ -79,7 +79,10 @@ function StartOverlay() {
       <div className="pointer-events-auto flex flex-col gap-3 sm:max-w-sm">
         <button
           type="button"
-          onClick={() => startNew()}
+          onClick={() => {
+            if (canContinue && !window.confirm("Esto sustituye la ciudad guardada. ¿Fundar una nueva?")) return;
+            startNew();
+          }}
           className="rounded-xl bg-fg px-5 py-3 text-left text-sm font-medium text-bg transition-transform duration-150 hover:opacity-95 active:scale-[0.98]"
         >
           Fundar una ciudad
@@ -94,7 +97,8 @@ function StartOverlay() {
           </button>
         ) : null}
         <p className="text-xs text-faint">
-          WASD mover · Q/E girar · T/G inclinar · rueda zoom · arrastra para construir
+          WASD mover · Q/E girar · T/G inclinar · rueda zoom · clic derecho orbitar · arrastra para construir
+          · un dedo pinta, dos orbitan
         </p>
       </div>
     </div>
@@ -116,11 +120,23 @@ function PlayHud() {
   const persistNow = useGame((s) => s.persistNow);
   const toMenu = useGame((s) => s.toMenu);
   const savedFlash = useGame((s) => s.savedFlash);
+  const hoverReason = useGame((s) => s.hoverReason);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
+      if (e.code === "Escape") {
+        if (help) {
+          setHelp(false);
+          return;
+        }
+        setTool("select");
+        useGame.getState().setPanel("none");
+        return;
+      }
+      if (help) return;
       const digit = /^Digit([1-9])$/.exec(e.code);
       if (digit) {
         const t = SHORTCUTS[Number(digit[1]) - 1];
@@ -131,14 +147,10 @@ function PlayHud() {
         e.preventDefault();
         togglePause();
       }
-      if (e.code === "Escape") {
-        setTool("select");
-        useGame.getState().setPanel("none");
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setTool, togglePause]);
+  }, [setTool, togglePause, help]);
 
   const activeGroup = TOOL_GROUPS.find((g) => g.id === group) ?? TOOL_GROUPS[0]!;
   const entry: ToolEntry =
@@ -163,6 +175,9 @@ function PlayHud() {
             <p className="font-display text-base leading-none text-fg">{snapshot.name}</p>
             <p className="mt-0.5 text-[11px] text-muted tabular-nums">
               {snapshot.tierName} · Día {snapshot.day} · {formatHour(snapshot.hour)}
+              {snapshot.nextTierPop != null
+                ? ` · ${snapshot.nextTierName} a ${num(snapshot.nextTierPop)} hab.`
+                : ""}
               {snapshot.rain > 0.35 ? " · lluvia" : snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
             </p>
           </div>
@@ -171,6 +186,7 @@ function PlayHud() {
           <Chip
             icon={<Smile className={`size-3.5 ${snapshot.happiness < 40 ? "text-danger" : "text-ok"}`} />}
             value={String(snapshot.happiness)}
+            label="ánimo"
           />
           <button
             type="button"
@@ -193,10 +209,10 @@ function PlayHud() {
           <IconBtn label="Velocidad normal" active={!paused && speed === 1} onClick={() => setSpeed(1)}>
             <span className="text-[11px] font-medium">1×</span>
           </IconBtn>
-          <IconBtn label="Rápido" active={!paused && speed === 2} onClick={() => setSpeed(2)}>
-            <span className="text-[11px] font-medium">2×</span>
+          <IconBtn label="Rápido (3×)" active={!paused && speed === 2} onClick={() => setSpeed(2)}>
+            <span className="text-[11px] font-medium">3×</span>
           </IconBtn>
-          <IconBtn label="Muy rápido" active={!paused && speed === 3} onClick={() => setSpeed(3)}>
+          <IconBtn label="Muy rápido (7×)" active={!paused && speed === 3} onClick={() => setSpeed(3)}>
             <FastForward className="size-4" />
           </IconBtn>
           <span className="mx-1 h-5 w-px bg-line" />
@@ -223,7 +239,7 @@ function PlayHud() {
       </header>
 
       {/* --- columna izquierda --- */}
-      <div className="pointer-events-none absolute top-24 left-3 flex w-[min(100%-1.5rem,15.5rem)] flex-col gap-2 sm:left-4">
+      <div className="pointer-events-none absolute top-24 left-3 flex w-[min(100%-1.5rem,15.5rem)] flex-col gap-2 max-sm:w-[min(48vw,13.5rem)] sm:left-4">
         <div className="pointer-events-auto hud-panel rounded-2xl p-3">
           <p className="text-[11px] font-medium tracking-wide text-muted uppercase">Demanda</p>
           <Meter label="Vivienda" value={snapshot.demandR} color="#3fa06a" />
@@ -246,9 +262,24 @@ function PlayHud() {
             Suministros
             <span className="text-[10px] normal-case tracking-normal text-faint">detalle</span>
           </button>
-          <Meter label="Luz" value={powerRatio} color="#e0c44a" hint={pct(Math.min(1, powerRatio))} />
-          <Meter label="Agua" value={waterRatio} color="#4aa7d4" hint={pct(Math.min(1, waterRatio))} />
-          <Meter label="Basura" value={garbageRatio} color="#c9c14a" hint={pct(Math.min(1, garbageRatio))} />
+          <Meter
+            label="Luz"
+            value={Math.min(1, powerRatio)}
+            color="#e0c44a"
+            hint={`${snapshot.powerSupply}/${snapshot.powerNeed}`}
+          />
+          <Meter
+            label="Agua"
+            value={Math.min(1, waterRatio)}
+            color="#4aa7d4"
+            hint={`${snapshot.waterSupply}/${snapshot.waterNeed}`}
+          />
+          <Meter
+            label="Basura"
+            value={Math.min(1, garbageRatio)}
+            color="#c9c14a"
+            hint={`${snapshot.garbageCapacity}/${snapshot.garbageNeed}`}
+          />
         </div>
 
         <div className="pointer-events-auto hud-panel scroll-x flex gap-1 overflow-x-auto rounded-2xl p-1.5">
@@ -269,19 +300,24 @@ function PlayHud() {
       </div>
 
       {/* --- columna derecha --- */}
-      <div className="pointer-events-none absolute top-24 right-3 flex w-[min(100%-1.5rem,17rem)] flex-col items-end gap-2 sm:right-4">
+      <div className="pointer-events-none absolute top-24 right-3 flex w-[min(100%-1.5rem,17rem)] flex-col items-end gap-2 max-sm:top-auto max-sm:bottom-28 max-sm:w-[min(48vw,14rem)] sm:right-4">
         {panel === "none" ? (
           <>
             <Inspector />
             {snapshot.notices.map((n) => (
-              <div
+              <button
                 key={n.id}
-                className={`pointer-events-auto hud-panel w-full rounded-2xl px-3 py-2 text-xs leading-relaxed ${
+                type="button"
+                onClick={() => {
+                  sim?.dismissNotice(n.id);
+                  useGame.getState().pullSnapshot();
+                }}
+                className={`pointer-events-auto hud-panel w-full rounded-2xl px-3 py-2 text-left text-xs leading-relaxed ${
                   n.kind === "warn" ? "text-danger" : n.kind === "good" ? "text-ok" : "text-fg"
                 }`}
               >
                 {n.text}
-              </div>
+              </button>
             ))}
           </>
         ) : null}
@@ -298,7 +334,8 @@ function PlayHud() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-3 sm:p-4">
         <p className="pointer-events-none max-w-lg text-center text-[11px] leading-snug text-fg/90 drop-shadow-sm">
           <span className="font-medium">{entry.name}</span>
-          {entry.cost !== null ? ` · ${entry.cost === 0 ? "Gratis" : money(entry.cost)}` : ""} — {entry.hint}
+          {entry.cost !== null ? ` · ${entry.cost === 0 ? "Gratis" : money(entry.cost)}` : ""} —{" "}
+          {hoverReason ? <span className="text-danger">{hoverReason}</span> : entry.hint}
         </p>
         <div className="pointer-events-auto hud-panel flex max-w-full flex-col gap-1 rounded-[22px] p-1.5">
           <div className="scroll-x flex gap-1 overflow-x-auto px-1">
@@ -347,7 +384,11 @@ function PlayHud() {
         </div>
       </div>
 
-      {help ? <HelpModal onClose={() => setHelp(false)} /> : null}
+      {help ? (
+        <HelpModal
+          onClose={() => setHelp(false)}
+        />
+      ) : null}
     </>
   );
 }
@@ -405,10 +446,15 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="absolute inset-0 z-30 flex items-end justify-center bg-bg/60 p-4 sm:items-center" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-title"
         className="hud-sheet max-h-[82dvh] w-full max-w-md overflow-auto rounded-3xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="font-display text-2xl text-fg">Cómo jugar</h2>
+        <h2 id="help-title" className="font-display text-2xl text-fg">
+          Cómo jugar
+        </h2>
         <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm leading-relaxed text-muted">
           <li>Prolonga la autovía con calles. Sin conexión a la autovía la ciudad no existe.</li>
           <li>
@@ -430,8 +476,8 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           <li>Un día dura cerca de un minuto a velocidad 1×. De noche la luna ilumina la ciudad.</li>
         </ol>
         <p className="mt-4 text-xs leading-relaxed text-faint">
-          WASD mover · Q/E girar · T/G inclinar · rueda o R/F zoom · botón derecho orbitar · 1–9 herramientas ·
-          Espacio pausa · Esc inspeccionar.
+          WASD mover · Q/E girar · T/G inclinar · rueda o R/F zoom · botón derecho orbitar · Shift+arrastre paneo ·
+          1 inspeccionar · 2 calle · 3–5 zonas · 6–7 luz/agua · 8 árbol · 9 demoler · Espacio pausa · Esc cierra.
         </p>
         <button
           type="button"

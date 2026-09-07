@@ -17,7 +17,7 @@ import { checkProgression, resolveBudget } from "./systems/economy";
 import { ZONE_DEPTH, facingRoad, rebuildNetwork } from "./systems/network";
 import { updatePopulation } from "./systems/population";
 import { isHooked, updateServices } from "./systems/services";
-import { assignTraffic, tickAssignment, updateVehicles } from "./systems/traffic";
+import { assignTraffic, tickAssignment, tickVehicleSpawns, updateVehicles } from "./systems/traffic";
 import {
   refreshCandidates,
   removeBuilding,
@@ -178,9 +178,9 @@ export class CitySim {
   vehicleBudget = 140;
 
   /** Versión de edificios con la que se rasterizó por última vez la cobertura. */
-  private coverageVersion = -1;
-  private netDirty = true;
-  private servicesDirty = true;
+  coverageVersion = -1;
+  netDirty = true;
+  servicesDirty = true;
 
   constructor(seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0) {
     this.seed = seed >>> 0;
@@ -199,6 +199,15 @@ export class CitySim {
       "Prolonga la autovía con calles, zonifica junto a ellas y engancha luz y agua.",
       "info",
     );
+    this.history.push({
+      day: this.day,
+      pop: this.pop,
+      money: this.money,
+      balance: 0,
+      happiness: Math.round(this.happiness),
+      landValue: Number(this.avgLandValue.toFixed(3)),
+      pollution: Number(this.avgPollution.toFixed(3)),
+    });
   }
 
   // ------------------------------------------------------------------ tick
@@ -253,6 +262,7 @@ export class CitySim {
     if (this.tickCount % 20 === 0) updateUpgrades(this);
     if (this.tickCount % 30 === 0) updateAbandon(this);
     tickAssignment(this);
+    tickVehicleSpawns(this);
     if (this.tickCount % 14 === 0) {
       updateEnvironment(this);
       this.fieldsVersion++;
@@ -291,6 +301,7 @@ export class CitySim {
 
   markBuildingsChanged() {
     this.buildingsVersion++;
+    this.treesVersion++;
   }
 
   markCatalogChanged() {
@@ -358,6 +369,7 @@ export class CitySim {
       const def = ROADS[cls]!;
       if (this.tier < def.tier) return none(`Se desbloquea en ${TIERS[def.tier]!.name}`);
       if (g.building[i]! >= 0) return none("Hay un edificio");
+      if (g.road[i] === ROAD.highway && cls !== ROAD.highway) return none("La autovía no se toca");
       if (g.road[i] === cls) return none("Ya existe esa vía");
       if (g.slope[i]! > 0.72 && g.terrain[i] !== TERRAIN.water) return none("Pendiente excesiva");
       const cost = this.roadCost(cls, i);
@@ -372,6 +384,8 @@ export class CitySim {
       if (g.road[i] !== ROAD.none) return none("Hay una vía");
       if (g.slope[i]! > 0.55) return none("Terreno demasiado inclinado");
       if (g.building[i]! >= 0) return none("Parcela ocupada");
+      const zone: Zone = tool.includes("-r") ? "R" : tool.includes("-c") ? "C" : "I";
+      if (g.zone[i] === ZONE_ID[zone] && g.density[i] === (high ? 1 : 0)) return none("Ya está zonificado");
       return { ok: true, cost: 0, ...fp };
     }
 
@@ -568,7 +582,10 @@ export class CitySim {
     if (this.notices.length > 5) this.notices.length = 5;
   }
 
-  /** Retira avisos viejos y los que ya no aplican, para que el HUD no se quede anclado al día 1. */
+  dismissNotice(id: string) {
+    this.notices = this.notices.filter((n) => n.id !== id);
+  }
+
   pruneNotices() {
     const ttl = TICKS_PER_DAY * 3;
     const done = new Set<string>();
@@ -870,6 +887,9 @@ class CitySimDefaults {
   nextBuildingId = 1;
   nextVehicleId = 1;
   vehicleBudget = 140;
+  coverageVersion = -1;
+  netDirty = true;
+  servicesDirty = true;
 }
 
 export function loadOrNull(): CitySim | null {

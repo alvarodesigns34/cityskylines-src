@@ -166,8 +166,10 @@ export function Water() {
       ref.current.position.z = Math.round(camera.position.z);
     }
     const sky = skyFor(sim?.hour ?? 12);
-    uniforms.uSun.value.copy(sky.sunDir);
-    uniforms.uSunColor.value.copy(sky.sunColor);
+    const spec = sky.night > 0.45 ? sky.moonDir : sky.sunDir;
+    const specColor = sky.night > 0.45 ? sky.moonColor : sky.sunColor;
+    uniforms.uSun.value.copy(spec);
+    uniforms.uSunColor.value.copy(specColor);
     uniforms.uSkyColor.value.copy(sky.skyHorizon);
     uniforms.uNight.value = sky.night;
     uniforms.uShallow.value.copy(sky.waterTint).lerp(_shallowMix.setHex(0x6fb2c4), 0.45);
@@ -183,7 +185,7 @@ export function Water() {
       ref={ref}
       material={material}
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[N / 2, WATER_LEVEL, N / 2]}
+      position={[N / 2, WATER_LEVEL + 0.03, N / 2]}
       frustumCulled={false}
     >
       <planeGeometry args={[1800, 1800, 8, 8]} />
@@ -262,6 +264,8 @@ export function Sky() {
       const { x: tx, y: ty, z: tz } = viewTarget;
       const dir = sky.sunDir;
       fillRef.current.position.set(tx - dir.x * 80, ty + 46, tz - dir.z * 80);
+      fillRef.current.target.position.set(tx, ty, tz);
+      fillRef.current.target.updateMatrixWorld();
       fillRef.current.color.copy(sky.skyHorizon);
       fillRef.current.intensity = 0.18 + sky.daylight * 0.32;
     }

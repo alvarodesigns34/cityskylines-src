@@ -60,7 +60,7 @@ export function Meter({ label, value, color, hint }: { label: string; value: num
         <span className="tabular-nums text-fg">{hint ?? pct(value)}</span>
       </div>
       <div className="meter">
-        <span style={{ width: `${Math.max(2, Math.min(100, value * 100))}%`, background: color }} />
+        <span style={{ width: `${Math.max(0, Math.min(100, value * 100))}%`, background: color }} />
       </div>
     </div>
   );
@@ -121,21 +121,21 @@ export function BudgetPanel({ snap, onClose }: { snap: Snapshot; onClose: () => 
         id="housingGrant"
         on={snap.policies.housingGrant}
         label="Ayuda a la vivienda"
-        hint="Sube la demanda residencial."
+        hint={`Sube la demanda residencial. ~${money(60 + snap.pop * 0.4)}/día.`}
         onToggle={setPolicy}
       />
       <PolicyToggle
         id="cleanIndustry"
         on={snap.policies.cleanIndustry}
         label="Industria limpia"
-        hint="Menos humo, algo menos de empleo industrial."
+        hint="Menos humo, algo menos de empleo industrial. ~$90 + 0,85 por empleo industrial al día."
         onToggle={setPolicy}
       />
       <PolicyToggle
         id="overtime"
         on={snap.policies.overtime}
         label="Turno extra de basura"
-        hint="Más capacidad de recogida."
+        hint={`Más capacidad de recogida. ~${money(50 + snap.garbageNeed * 0.35)}/día.`}
         onToggle={setPolicy}
       />
 

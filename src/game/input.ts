@@ -23,8 +23,6 @@ const GAME_CODES = new Set([
   "Digit7",
   "Digit8",
   "Digit9",
-  "Minus",
-  "Equal",
   "Escape",
 ]);
 
@@ -65,7 +63,7 @@ class Input {
     const el = e.target as HTMLElement | null;
     if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) return;
     this.keys.add(e.code);
-    if (GAME_CODES.has(e.code)) e.preventDefault();
+    if (GAME_CODES.has(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
   };
 
   private onUp = (e: KeyboardEvent) => {

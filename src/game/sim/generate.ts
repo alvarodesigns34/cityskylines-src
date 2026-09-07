@@ -113,34 +113,7 @@ export function generateMap(seed: number): MapGen {
   }
 
   // Valor escénico: cerca del agua, arbolado y con vistas.
-  for (let z = 0; z < N; z++) {
-    for (let x = 0; x < N; x++) {
-      const i = idx(x, z);
-      if (g.terrain[i] === TERRAIN.water) continue;
-      let nearWater = 0;
-      for (let r = 1; r <= 5 && !nearWater; r++) {
-        for (const [dx, dz] of [
-          [r, 0],
-          [-r, 0],
-          [0, r],
-          [0, -r],
-          [r, r],
-          [-r, -r],
-          [r, -r],
-          [-r, r],
-        ] as const) {
-          const j = g.at(x + dx, z + dz);
-          if (j >= 0 && g.terrain[j] === TERRAIN.water) {
-            nearWater = 1 - (r - 1) / 5;
-            break;
-          }
-        }
-      }
-      const trees = g.tree[i] ? 0.25 : 0;
-      const view = Math.min(0.3, (g.height[i]! / MAX_HEIGHT) * 0.45);
-      g.scenery[i] = Math.min(1, nearWater * 0.55 + trees + view);
-    }
-  }
+  g.recomputeScenery();
 
   // Entrada de autovía: por el borde oeste, a la altura más llana disponible.
   let bestZ = Math.floor(N / 2);

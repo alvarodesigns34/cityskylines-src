@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { DEFS, ROADS } from "./sim/catalog";
 import { CitySim, loadOrNull } from "./sim/city";
 import { hasSave } from "./sim/save";
 import { repayLoan, setTax, takeLoan } from "./sim/systems/economy";
@@ -16,6 +17,7 @@ interface GameStore {
   snapshot: Snapshot | null;
   selected: { x: number; z: number } | null;
   savedFlash: number;
+  hoverReason: string | null;
   worldId: number;
   startNew: (seed?: number) => void;
   continueSave: () => void;
@@ -27,7 +29,7 @@ interface GameStore {
   togglePause: () => void;
   setSelected: (cell: { x: number; z: number } | null) => void;
   pullSnapshot: () => void;
-  persistNow: () => void;
+  persistNow: (flash?: boolean) => void;
   changeTax: (zone: "R" | "C" | "I", value: number) => void;
   setPolicy: (id: PolicyId, on: boolean) => void;
   borrow: (amount: number) => void;
@@ -97,6 +99,14 @@ function exposeQa() {
   };
 }
 
+function toolLocked(tier: number, tool: Tool): boolean {
+  if (tool === "road-avenue") return (ROADS[2]?.tier ?? 0) > tier;
+  if (tool === "road-highway") return (ROADS[3]?.tier ?? 0) > tier;
+  if (tool.endsWith("-high")) return tier < 2;
+  if (tool.startsWith("build:")) return (DEFS[tool.slice(6)]?.tier ?? 0) > tier;
+  return false;
+}
+
 export const useGame = create<GameStore>((set, get) => ({
   phase: "menu",
   hasSave: false,
@@ -106,6 +116,7 @@ export const useGame = create<GameStore>((set, get) => ({
   snapshot: null,
   selected: null,
   savedFlash: 0,
+  hoverReason: null,
   worldId: 0,
 
   startNew: (seed?: number) => {
@@ -151,8 +162,9 @@ export const useGame = create<GameStore>((set, get) => ({
   },
 
   setTool: (tool) => {
+    if (sim && toolLocked(sim.tier, tool)) return;
     if (sim) sim.tool = tool;
-    set({ tool });
+    set({ tool, hoverReason: null });
   },
 
   setOverlay: (overlay) => {
@@ -185,10 +197,10 @@ export const useGame = create<GameStore>((set, get) => ({
     set({ snapshot: sim.snapshot() });
   },
 
-  persistNow: () => {
+  persistNow: (flash = true) => {
     if (!sim) return;
-    sim.persist();
-    set({ savedFlash: Date.now() });
+    const ok = sim.persist();
+    if (ok && flash) set({ savedFlash: Date.now(), hasSave: true });
   },
 
   changeTax: (zone, value) => {

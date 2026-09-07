@@ -31,9 +31,9 @@ export function updateDemand(sim: CitySim) {
   // Si el vacío es por falta de luz o agua, no hay que matar la demanda: cuando el jugador
   // coloque otro depósito, la ciudad tiene que poder recuperarse.
   const serviceStress = Math.min(sim.powerRatio, sim.waterRatio);
-  const slackR = clamp01((0.9 - sim.occupancyR) * 2.2) * serviceStress;
-  const slackC = clamp01((0.88 - sim.occupancyC) * 2) * serviceStress;
-  const slackI = clamp01((0.88 - sim.occupancyI) * 2) * serviceStress;
+  const slackR = sim.occupancyR > 0.001 ? clamp01((0.9 - sim.occupancyR) * 2.2) * serviceStress : 0;
+  const slackC = commercialJobs > 0.01 ? clamp01((0.88 - sim.occupancyC) * 2) * serviceStress : 0;
+  const slackI = industrialJobs > 0.01 ? clamp01((0.88 - sim.occupancyI) * 2) * serviceStress : 0;
 
   let dR = 0.34 + jobSurplus * 0.7 - slackR * 0.5 + (sim.happiness - 52) / 260;
   // Reparto objetivo del empleo: comercio ~26% de la población, industria ~32%.
@@ -53,6 +53,8 @@ export function updateDemand(sim: CitySim) {
   // Nadie se muda a una ciudad que no funciona.
   if (sim.happiness < 28) dR *= 0.25 + (sim.happiness / 28) * 0.5;
   if (sim.pop < 45) dR = Math.max(dR, 0.62);
+  if (commercialJobs < 1) dC = Math.max(dC, 0.34);
+  if (industrialJobs < 1) dI = Math.max(dI, 0.32);
   if (sim.pop > 25 && sim.jobs < sim.workers * 0.8) {
     dC = Math.max(dC, 0.5);
     dI = Math.max(dI, 0.55);

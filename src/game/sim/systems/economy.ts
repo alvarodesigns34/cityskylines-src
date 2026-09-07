@@ -107,7 +107,7 @@ export function resolveBudget(sim: CitySim) {
     sim.money += draw;
     sim.pushNotice("overdraft", "Números rojos: se ha abierto crédito automático. Sube impuestos o recorta.", "warn");
   } else if (sim.money < 0) {
-    sim.pushNotice("bankrupt", "Sin crédito disponible. Los servicios empiezan a fallar.", "warn");
+    sim.pushNotice("bankrupt", "Sin crédito disponible. Si el saldo cae de −20.000 los servicios se recortan.", "warn");
   }
 
   sim.history.push({

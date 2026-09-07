@@ -59,6 +59,12 @@
   user-select: none;
 }
 
+.hud-sheet,
+.hud-panel.scroll-x,
+.scroll-x {
+  touch-action: pan-x pan-y;
+}
+
 .hud-panel {
   background: color-mix(in oklab, var(--color-bg) 78%, transparent);
   border: 1px solid color-mix(in oklab, var(--color-fg) 10%, transparent);

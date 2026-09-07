@@ -85,6 +85,7 @@ export class Grid {
       terrain: encode(this.terrain),
       height: encodeF32(this.height),
       tree: encode(this.tree),
+      scenery: encodeF32(this.scenery),
       road: encode(this.road),
       zone: encode(this.zone),
       density: encode(this.density),
@@ -103,10 +104,12 @@ export class Grid {
       g.zone = decode(blob.zone as string, CELLS);
       g.density = decode(blob.density as string, CELLS);
       g.building = decodeI32(blob.building as string, CELLS);
+      if (typeof blob.scenery === "string") g.scenery = decodeF32(blob.scenery as string, CELLS);
     } catch {
       return null;
     }
     g.recomputeSlope();
+    if (typeof blob.scenery !== "string") g.recomputeScenery();
     return g;
   }
 
@@ -121,6 +124,40 @@ export class Grid {
         if (z > 0) max = Math.max(max, Math.abs(h - this.height[i - N]!));
         if (z < N - 1) max = Math.max(max, Math.abs(h - this.height[i + N]!));
         this.slope[i] = Math.min(1, max / 1.2);
+      }
+    }
+  }
+
+  /** Orilla, bosque y vistas. Se guarda; si falta (saves viejos) se reconstruye. */
+  recomputeScenery() {
+    const MAX_HEIGHT = 7;
+    this.scenery.fill(0);
+    for (let z = 0; z < N; z++) {
+      for (let x = 0; x < N; x++) {
+        const i = idx(x, z);
+        if (this.terrain[i] === TERRAIN.water) continue;
+        let nearWater = 0;
+        for (let r = 1; r <= 5 && !nearWater; r++) {
+          for (const [dx, dz] of [
+            [r, 0],
+            [-r, 0],
+            [0, r],
+            [0, -r],
+            [r, r],
+            [-r, -r],
+            [r, -r],
+            [-r, r],
+          ] as const) {
+            const j = this.at(x + dx, z + dz);
+            if (j >= 0 && this.terrain[j] === TERRAIN.water) {
+              nearWater = 1 - (r - 1) / 5;
+              break;
+            }
+          }
+        }
+        const trees = this.tree[i] ? 0.25 : 0;
+        const view = Math.min(0.3, (this.height[i]! / MAX_HEIGHT) * 0.45);
+        this.scenery[i] = Math.min(1, nearWater * 0.55 + trees + view);
       }
     }
   }

@@ -141,9 +141,14 @@ export function mergeParts(parts: Part[]): THREE.BufferGeometry {
     }
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
     g.setAttribute("aEmis", new THREE.BufferAttribute(emis, 1));
-    if (g.index) g.deleteAttribute("uv");
-    else g.deleteAttribute("uv");
-    geos.push(g.index ? g.toNonIndexed() : g);
+    g.deleteAttribute("uv");
+    if (g.index) {
+      const ni = g.toNonIndexed();
+      g.dispose();
+      geos.push(ni);
+    } else {
+      geos.push(g);
+    }
   }
   const merged = mergeGeometries(geos, false);
   geos.forEach((g) => g.dispose());

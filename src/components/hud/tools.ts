@@ -177,18 +177,19 @@ export const OVERLAYS: OverlayEntry[] = [
   { id: "education", name: "Educación", icon: School },
   { id: "health", name: "Sanidad", icon: Stethoscope },
   { id: "safety", name: "Seguridad", icon: ShieldCheck },
+  { id: "fire", name: "Bomberos", icon: Flame },
   { id: "garbage", name: "Basura", icon: Trash2 },
 ];
 
-/** Atajos 1..9 del dock. */
+/** Atajos 1..9: inspectar y herramientas de Aldea (siempre desbloqueadas). */
 export const SHORTCUTS: Tool[] = [
   "select",
   "road-street",
-  "road-avenue",
   "zone-r",
   "zone-c",
   "zone-i",
   "build:power_coal",
   "build:water_tower",
+  "tree-plant",
   "bulldoze",
 ];

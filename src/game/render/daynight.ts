@@ -55,6 +55,11 @@ function mixHex(a: number, b: number, t: number, out: THREE.Color): THREE.Color 
   return out.copy(cA).lerp(cB, t);
 }
 
+function smooth01(a: number, b: number, t: number): number {
+  const x = Math.max(0, Math.min(1, (t - a) / Math.max(1e-4, b - a)));
+  return x * x * (3 - 2 * x);
+}
+
 const state: SkyState = {
   daylight: 1,
   night: 0,
@@ -101,11 +106,13 @@ export function skyFor(hour: number): SkyState {
   const dayT = (h - 6.25) / 13.5;
   const elev = Math.sin(Math.PI * Math.min(1, Math.max(0, dayT)));
   const azim = (h / 24) * Math.PI * 2 - Math.PI * 0.5;
-  const above = h > 6.25 && h < 19.75;
-  const y = above ? 0.12 + elev * 0.95 : -0.25;
+  const rise = smooth01(5.85, 6.7, h);
+  const set = 1 - smooth01(19.15, 20.35, h);
+  const above = rise * set;
+  const y = -0.25 + above * (0.37 + elev * 0.95);
   state.sunDir.set(Math.cos(azim) * 0.9, y, Math.sin(azim) * 0.55).normalize();
 
-  state.daylight = Math.max(0, Math.min(1, above ? 0.25 + elev * 0.85 : 0));
+  state.daylight = Math.max(0, Math.min(1, above * (0.25 + elev * 0.85)));
   state.night = Math.max(0, Math.min(1, 1 - state.daylight * 1.35));
 
   // Luna al otro lado del cielo, siempre por encima del horizonte.

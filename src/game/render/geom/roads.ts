@@ -36,7 +36,8 @@ export function roadGeometry(cls: number, mask: number): THREE.BufferGeometry {
 
   // Calzada: cuadrado central + un brazo por cada conexión.
   out.push(box(0, y, 0, w, th, w, ASPHALT));
-  out.push(box(0, y + 0.002, 0, w * 0.42, th, w * 0.42, ASPHALT_WORN));
+  const wornTh = 0.012;
+  out.push(box(0, y + th / 2 + wornTh / 2, 0, w * 0.42, wornTh, w * 0.42, ASPHALT_WORN));
   for (let d = 0; d < 4; d++) {
     if (!(mask & DIR_BITS[d]!)) continue;
     const [dx, dz] = DIR_VEC[d]!;
@@ -63,7 +64,7 @@ export function roadGeometry(cls: number, mask: number): THREE.BufferGeometry {
 
   // Marcas viales.
   const links = DIR_BITS.filter((b) => mask & b).length;
-  const markY = y + th / 2 + 0.002;
+  const markY = y + th / 2 + 0.01;
   const markColor = cls >= 3 ? MARKING_WARM : MARKING;
   if (links <= 2) {
     for (let d = 0; d < 4; d++) {

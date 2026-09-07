@@ -11,8 +11,8 @@ const queue = new Int32Array(CELLS);
 const gScore = new Float32Array(CELLS);
 const cameFrom = new Int32Array(CELLS);
 const closed = new Uint8Array(CELLS);
-const heapNodes = new Int32Array(CELLS + 1);
-const heapCost = new Float32Array(CELLS + 1);
+const heapNodes = new Int32Array(CELLS * 4 + 1);
+const heapCost = new Float32Array(CELLS * 4 + 1);
 let heapSize = 0;
 
 function heapClear() {
@@ -95,6 +95,11 @@ export function rebuildNetwork(g: Grid): { roadCount: number; connected: boolean
     }
   }
   const connected = tail > 0;
+  let streetsHooked = 0;
+  for (let i = 0; i < CELLS; i++) {
+    if (g.connected[i] && g.road[i] !== ROAD.none && g.road[i] !== ROAD.highway) streetsHooked++;
+  }
+  const hooked = connected && streetsHooked > 0;
 
   // Distancia a la red desde cada parcela (BFS multi-origen limitado).
   g.roadDist.fill(255);
@@ -118,14 +123,14 @@ export function rebuildNetwork(g: Grid): { roadCount: number; connected: boolean
       if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
       const j = idx(nx, nz);
       if (g.roadDist[j]! <= d + 1) continue;
-      // La distancia se propaga por suelo edificable, no por agua ni por otras vías.
-      if (d > 0 && (g.road[j] !== ROAD.none || g.terrain[j] === 1)) continue;
+      // Ni agua ni otras vías: si no, un río estrecho «engancha» la orilla de enfrente.
+      if (g.road[j] !== ROAD.none || g.terrain[j] === 1) continue;
       g.roadDist[j] = d + 1;
       queue[tail++] = j;
     }
   }
 
-  return { roadCount, connected };
+  return { roadCount, connected: hooked };
 }
 
 /** Coste de recorrer una casilla de vía, en "minutos". Sube con la congestión. */

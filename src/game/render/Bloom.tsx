@@ -36,6 +36,7 @@ export function Bloom() {
   useFrame(
     () => {
       const night = skyFor(sim?.hour ?? 12).night;
+      bloom.enabled = night > 0.04;
       bloom.strength = night * 0.32;
       composer.render();
     },

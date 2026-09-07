@@ -54,8 +54,8 @@ function facade(o: FacadeOpts) {
   const t = 0.04;
 
   const put = (u: number, y: number, uw: number, h: number, color: number, emis: number, thick = t) => {
-    const x = along === "x" ? o.cx + u : o.cx + sign * (o.depth + thick / 2);
-    const z = along === "x" ? o.cz + sign * (o.depth + thick / 2) : o.cz + u;
+    const x = along === "x" ? o.cx + u : o.cx + sign * (o.depth + thick / 2 + 0.012);
+    const z = along === "x" ? o.cz + sign * (o.depth + thick / 2 + 0.012) : o.cz + u;
     const sx = along === "x" ? uw : thick;
     const sz = along === "x" ? thick : uw;
     out.push(box(x, y, z, sx, h, sz, color, { emis }));

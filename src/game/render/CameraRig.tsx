@@ -97,7 +97,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
     /** Pinta también las casillas intermedias: un arrastre rápido no deja huecos. */
     const paintLine = (from: { x: number; z: number } | null, to: { x: number; z: number }) => {
       const tool = useGame.getState().tool;
-      if (!sim || tool === "select") return;
+      if (!sim || tool === "select" || tool.startsWith("build:")) return;
       let changed = false;
       if (from && (Math.abs(to.x - from.x) > 1 || Math.abs(to.z - from.z) > 1)) {
         const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.z - from.z));
@@ -113,6 +113,11 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
     };
 
     const onDown = (e: PointerEvent) => {
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture no disponible */
+      }
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       last.current = { x: e.clientX, y: e.clientY };
       if (pointers.current.size === 2) {
@@ -129,10 +134,18 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       const cell = cellAt(e.clientX, e.clientY);
       if (tool === "select") {
         mode.current = "pan";
-        // Selecciona la parcela, o limpia si se ha pulsado fuera del mapa. (No se usa
-        // `onPointerMissed` de R3F: ninguna malla tiene manejadores de puntero, así que se
-        // dispara en *todos* los clics y borraba la selección recién hecha.)
         useGame.getState().setSelected(cell);
+        return;
+      }
+      if (tool.startsWith("build:")) {
+        mode.current = "pan";
+        lastCell.current = cell;
+        if (cell && sim) {
+          sim.hover = cell;
+          const check = sim.canPlace(tool, cell.x, cell.z);
+          useGame.setState({ hoverReason: check.ok ? null : (check.reason ?? null) });
+          if (sim.applyTool(tool, cell.x, cell.z)) useGame.getState().pullSnapshot();
+        }
         return;
       }
       mode.current = "paint";
@@ -177,6 +190,16 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
 
       const cell = cellAt(e.clientX, e.clientY);
       if (sim) sim.hover = cell;
+      if (cell && sim) {
+        const tool = useGame.getState().tool;
+        if (tool !== "select") {
+          const check = sim.canPlace(tool, cell.x, cell.z);
+          const reason = check.ok ? null : (check.reason ?? null);
+          if (useGame.getState().hoverReason !== reason) useGame.setState({ hoverReason: reason });
+        } else if (useGame.getState().hoverReason) {
+          useGame.setState({ hoverReason: null });
+        }
+      }
       if (mode.current === "paint" && cell && interactive) {
         if (!lastCell.current || lastCell.current.x !== cell.x || lastCell.current.z !== cell.z) {
           paintLine(lastCell.current, cell);
@@ -186,6 +209,11 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
     };
 
     const onUp = (e: PointerEvent) => {
+      try {
+        if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
       pointers.current.delete(e.pointerId);
       if (pointers.current.size === 0) {
         mode.current = null;
@@ -240,7 +268,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
     tx.current = clamp(tx.current, -6, N + 6);
     tz.current = clamp(tz.current, -6, N + 6);
 
-    const groundY = sim
+    const groundTarget = sim
       ? Math.max(
           0,
           sim.grid.height[
@@ -249,13 +277,20 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
         )
       : 0;
     const cr = Math.cos(pitch.current) * dist.current;
-    camera.position.set(
-      tx.current + Math.sin(yaw.current) * cr,
-      groundY + Math.sin(pitch.current) * dist.current + 0.6,
-      tz.current + Math.cos(yaw.current) * cr,
-    );
-    camera.lookAt(tx.current, groundY + 0.4, tz.current);
-    viewTarget.set(tx.current, groundY, tz.current);
+    const camX = tx.current + Math.sin(yaw.current) * cr;
+    const camZ = tz.current + Math.cos(yaw.current) * cr;
+    const groundCam = sim
+      ? Math.max(
+          0,
+          sim.grid.height[
+            idx(clamp(Math.floor(camX), 0, N - 1), clamp(Math.floor(camZ), 0, N - 1))
+          ]!,
+        )
+      : 0;
+    const camY = Math.max(groundCam + 1.4, groundTarget + Math.sin(pitch.current) * dist.current + 0.6);
+    camera.position.set(camX, camY, camZ);
+    camera.lookAt(tx.current, groundTarget + 0.4, tz.current);
+    viewTarget.set(tx.current, groundTarget, tz.current);
     viewState.distance = dist.current;
 
     if (typeof window !== "undefined") {

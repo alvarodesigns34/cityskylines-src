@@ -117,7 +117,7 @@ function SimTicker({ interactive }: { interactive: boolean }) {
       saveAcc.current += dt;
       if (saveAcc.current > 15) {
         saveAcc.current = 0;
-        persist();
+        persist(false);
       }
     }
   });

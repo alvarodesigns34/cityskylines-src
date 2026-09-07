@@ -230,6 +230,7 @@ test("el grid se serializa y se restaura sin pérdida", () => {
     assert.equal(restored!.zone[i], grid.zone[i]);
     assert.equal(restored!.density[i], grid.density[i]);
     assert.ok(Math.abs(restored!.height[i]! - grid.height[i]!) < 1e-6);
+    assert.ok(Math.abs(restored!.scenery[i]! - grid.scenery[i]!) < 1e-5);
   }
 });
 
@@ -368,4 +369,106 @@ test("plantar un árbol y las políticas sobreviven al guardado", () => {
   let trees = 0;
   for (let i = 0; i < N * N; i++) if (loaded!.grid.tree[i]) trees++;
   assert.ok(trees >= 1, "el árbol plantado permanece");
+});
+
+test("no se puede pintar una calle sobre la autovía", () => {
+  const sim = new CitySim(SEED);
+  let hx = -1;
+  let hz = -1;
+  for (let i = 0; i < N * N; i++) {
+    if (sim.grid.road[i] === ROAD.highway) {
+      hx = i % N;
+      hz = (i / N) | 0;
+      break;
+    }
+  }
+  assert.ok(hx >= 0);
+  const check = sim.canPlace("road-street", hx, hz);
+  assert.equal(check.ok, false);
+  assert.equal(sim.applyTool("road-street", hx, hz), false);
+  assert.equal(sim.grid.road[idx(hx, hz)], ROAD.highway);
+});
+
+test("roadDist no cruza el agua", () => {
+  const sim = new CitySim(SEED);
+  const { x: ex, z: ez } = sim.entry;
+  sim.applyTool("road-street", ex, ez);
+  sim.refreshAll();
+  for (let i = 0; i < N * N; i++) {
+    if (sim.grid.terrain[i] === TERRAIN.water && sim.grid.road[i] === ROAD.none) {
+      assert.equal(sim.grid.roadDist[i], 255, "el agua no tiene distancia a la vía");
+    }
+  }
+});
+
+test("scenery sobrevive a un save sin el campo (saves viejos)", () => {
+  const sim = new CitySim(SEED);
+  const blob = sim.toSave();
+  const sumBefore = sim.grid.scenery.reduce((a, b) => a + b, 0);
+  assert.ok(sumBefore > 10, "el mapa tiene valor escénico");
+  const grid = { ...blob.grid };
+  delete grid.scenery;
+  blob.grid = grid;
+  const loaded = CitySim.fromSave(blob);
+  assert.ok(loaded);
+  const sumAfter = loaded!.grid.scenery.reduce((a, b) => a + b, 0);
+  assert.ok(sumAfter > 10, "se reconstruye scenery si faltaba");
+});
+
+test("connectedCity es falso hasta que una calle toca la autovía", () => {
+  const sim = new CitySim(SEED);
+  assert.equal(sim.connectedCity, false);
+  let placed = false;
+  for (let i = 0; i < N * N && !placed; i++) {
+    if (sim.grid.road[i] !== ROAD.highway) continue;
+    const x = i % N;
+    const z = (i / N) | 0;
+    for (const [dx, dz] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      if (sim.canPlace("road-street", x + dx, z + dz).ok) {
+        placed = sim.applyTool("road-street", x + dx, z + dz);
+        break;
+      }
+    }
+  }
+  assert.ok(placed, "se puede enganchar una calle a la autovía");
+  assert.equal(sim.connectedCity, true);
+});
+
+test("spawnBuilding invalida la vegetación", () => {
+  const sim = new CitySim(SEED);
+  const { x: ex, z: ez } = sim.entry;
+  for (let x = ex; x < ex + 8; x++) sim.applyTool("road-street", x, ez);
+  sim.refreshAll();
+  const v0 = sim.treesVersion;
+  let placed = false;
+  for (let dx = 1; dx < 6 && !placed; dx++) {
+    if (sim.canPlace("build:water_tower", ex + dx, ez + 1).ok) {
+      placed = sim.applyTool("build:water_tower", ex + dx, ez + 1);
+    }
+  }
+  assert.ok(placed);
+  assert.ok(sim.treesVersion > v0);
+});
+
+test("fromSave deja las banderas internas definidas", () => {
+  const sim = seededCity();
+  const loaded = CitySim.fromSave(JSON.parse(JSON.stringify(sim.toSave())));
+  assert.ok(loaded);
+  assert.equal(typeof loaded!.netDirty, "boolean");
+  assert.equal(typeof loaded!.servicesDirty, "boolean");
+  assert.equal(typeof loaded!.coverageVersion, "number");
+});
+
+test("en pausa no spawnean coches por frame", () => {
+  const sim = seededCity();
+  run(sim, 900);
+  sim.paused = true;
+  const before = sim.vehicles.length;
+  for (let i = 0; i < 120; i++) sim.step(1 / 60);
+  assert.equal(sim.vehicles.length, before);
 });

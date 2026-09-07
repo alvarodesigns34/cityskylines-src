@@ -68,13 +68,13 @@ function beginAssignment(sim: CitySim) {
     if (b.occupancy < 0.15) continue;
     if (d.homes) {
       const w = d.homes * b.occupancy;
-      homes.push(k);
+      homes.push(b.id);
       homeWeight.push(w);
       totalHome += w;
     }
     if (d.jobs) {
       const w = d.jobs * b.occupancy;
-      works.push(k);
+      works.push(b.id);
       workWeight.push(w);
       totalWork += w;
     }
@@ -98,8 +98,9 @@ function stepAssignment(sim: CitySim) {
   const g = sim.grid;
   const end = Math.min(OD_SAMPLES, cursor + OD_PER_TICK);
   for (; cursor < end; cursor++) {
-    const a = sim.buildings[pickWeighted(sim, homes, homeWeight, totalHome)]!;
-    const c = sim.buildings[pickWeighted(sim, works, workWeight, totalWork)]!;
+    const a = buildingById(sim, pickWeighted(sim, homes, homeWeight, totalHome));
+    const c = buildingById(sim, pickWeighted(sim, works, workWeight, totalWork));
+    if (!a || !c) continue;
     const from = nearestRoad(g, a.x, a.z, a.w, a.d);
     const to = nearestRoad(g, c.x, c.z, c.w, c.d);
     if (from < 0 || to < 0 || from === to) continue;
@@ -140,6 +141,11 @@ function commit(sim: CitySim) {
   }
 }
 
+function buildingById(sim: CitySim, id: number): (typeof sim.buildings)[number] | null {
+  for (const b of sim.buildings) if (b.id === id) return b;
+  return null;
+}
+
 function pickWeighted(sim: CitySim, list: number[], weights: number[], total: number): number {
   let r = sim.rand() * total;
   for (let i = 0; i < list.length; i++) {
@@ -158,19 +164,22 @@ export function trafficRhythm(hour: number): number {
   return Math.min(1, night + morning * 0.95 + evening + midday);
 }
 
-export function updateVehicles(sim: CitySim, dt: number) {
-  const g = sim.grid;
+/** Altas y bajas de vehículos: una vez por tick, nunca por frame de render. */
+export function tickVehicleSpawns(sim: CitySim) {
   const rhythm = trafficRhythm(sim.hour);
   const cap = Math.min(
     sim.vehicleBudget,
     Math.round((6 + Math.sqrt(Math.max(0, sim.pop)) * 2.6) * (0.25 + rhythm * 0.9)),
   );
-
-  // Altas y bajas.
   if (sim.routes.length && sim.vehicles.length < cap && sim.tickCount % 2 === 0) {
     spawnVehicle(sim);
   }
   while (sim.vehicles.length > cap + 6) sim.vehicles.pop();
+}
+
+export function updateVehicles(sim: CitySim, dt: number) {
+  const g = sim.grid;
+  const rhythm = trafficRhythm(sim.hour);
 
   if (dt <= 0) {
     for (const v of sim.vehicles) place(sim, v, 0);

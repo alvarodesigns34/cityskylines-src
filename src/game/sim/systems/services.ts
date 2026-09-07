@@ -31,7 +31,7 @@ export function updateServices(sim: CitySim, rebuildCoverage = true) {
     // Solo suministra lo que está enganchado a la red.
     const live = isHooked(sim, b.x, b.z, b.w, b.d) ? 1 : 0;
     if (d.powerSupply) powerSupply += d.powerSupply * live;
-    if (d.waterSupply) waterSupply += d.waterSupply * live * (sim.powerRatio > 0.15 ? 1 : 0);
+    if (d.waterSupply) waterSupply += d.waterSupply * live;
     if (d.garbageCapacity) garbageCapacity += d.garbageCapacity * live;
     // Los edificios que crecen consumen en proporción a lo ocupados que estén;
     // los servicios que coloca el jugador consumen siempre.
@@ -47,11 +47,12 @@ export function updateServices(sim: CitySim, rebuildCoverage = true) {
 
   sim.powerSupply = powerSupply;
   sim.powerNeed = powerNeed;
+  sim.powerRatio = powerNeed <= 0.01 ? 1 : clamp01(powerSupply / powerNeed);
+  if (sim.powerRatio <= 0.15) waterSupply = 0;
   sim.waterSupply = waterSupply;
   sim.waterNeed = waterNeed;
   sim.garbageCapacity = garbageCapacity;
   sim.garbageNeed = garbageNeed;
-  sim.powerRatio = powerNeed <= 0.01 ? 1 : clamp01(powerSupply / powerNeed);
   sim.waterRatio = waterNeed <= 0.01 ? 1 : clamp01(waterSupply / waterNeed);
   sim.garbageRatio = garbageNeed <= 0.01 ? 1 : clamp01(garbageCapacity / garbageNeed);
 
@@ -61,42 +62,40 @@ export function updateServices(sim: CitySim, rebuildCoverage = true) {
   if (powerSupply > 0) spreadFromSuppliers(sim, g.powered, "powerSupply");
   if (waterSupply > 0) spreadFromSuppliers(sim, g.watered, "waterSupply");
 
-  // --- 3. Cobertura de servicios urbanos ---
-  // Rasterizar los seis campos cuesta lo mismo que todo lo demás junto y solo cambia cuando
-  // cambia el parque de equipamientos: se recalcula bajo demanda, no en cada pasada.
-  if (!rebuildCoverage) return;
-  for (const k of SERVICES) sim.grid.service[k]!.fill(0);
-  const load: Record<string, { cap: number }> = {};
-  for (const k of SERVICES) load[k] = { cap: 0 };
-  for (const b of sim.buildings) {
-    const d = DEFS[b.kind]!;
-    if (!d.service) continue;
-    if (!isOperational(sim, b)) continue;
-    load[d.service.kind]!.cap += d.service.capacity;
-  }
-  const pop = Math.max(1, sim.pop);
-  for (const b of sim.buildings) {
-    const d = DEFS[b.kind]!;
-    if (!d.service || !isOperational(sim, b)) continue;
-    const cap = load[d.service.kind]!.cap;
-    // Si el servicio está desbordado, todos sus edificios pierden fuerza.
-    const saturation = d.service.kind === "garbage" ? 1 : clamp01(cap / pop);
-    const strength = d.service.strength * (0.35 + 0.65 * saturation);
-    stamp(
-      sim.grid.service[d.service.kind]!,
-      b.x + (b.w - 1) / 2,
-      b.z + (b.d - 1) / 2,
-      d.service.radius,
-      strength,
-    );
-  }
-  for (const k of SERVICES) {
-    const f = sim.grid.service[k]!;
-    blur(f, 1);
-    for (let i = 0; i < CELLS; i++) f[i] = clamp01(f[i]!);
+  // Rasterizar cobertura solo cuando cambia el parque. El nivel medio se recalcula
+  // siempre: ocupación y basura cambian cada tick.
+  if (rebuildCoverage) {
+    for (const k of SERVICES) sim.grid.service[k]!.fill(0);
+    const load: Record<string, { cap: number }> = {};
+    for (const k of SERVICES) load[k] = { cap: 0 };
+    for (const b of sim.buildings) {
+      const d = DEFS[b.kind]!;
+      if (!d.service) continue;
+      if (!isOperational(sim, b)) continue;
+      load[d.service.kind]!.cap += d.service.capacity;
+    }
+    const pop = Math.max(1, sim.pop);
+    for (const b of sim.buildings) {
+      const d = DEFS[b.kind]!;
+      if (!d.service || !isOperational(sim, b)) continue;
+      const cap = load[d.service.kind]!.cap;
+      const saturation = d.service.kind === "garbage" ? 1 : clamp01(cap / pop);
+      const strength = d.service.strength * (0.35 + 0.65 * saturation);
+      stamp(
+        sim.grid.service[d.service.kind]!,
+        b.x + (b.w - 1) / 2,
+        b.z + (b.d - 1) / 2,
+        d.service.radius,
+        strength,
+      );
+    }
+    for (const k of SERVICES) {
+      const f = sim.grid.service[k]!;
+      blur(f, 1);
+      for (let i = 0; i < CELLS; i++) f[i] = clamp01(f[i]!);
+    }
   }
 
-  // Nivel medio de cada servicio sobre las casillas habitadas.
   sim.serviceLevel = {} as Record<string, number>;
   for (const k of SERVICES) {
     let sum = 0;
@@ -109,7 +108,7 @@ export function updateServices(sim: CitySim, rebuildCoverage = true) {
     }
     sim.serviceLevel[k] = n > 0.001 ? clamp01(sum / n) : 0;
   }
-  sim.serviceLevel.garbage = clamp01(sim.serviceLevel.garbage! * sim.garbageRatio);
+  sim.serviceLevel.garbage = clamp01((sim.serviceLevel.garbage ?? 0) * sim.garbageRatio);
 }
 
 /** ¿La parcela toca la red viaria conectada dentro de la profundidad de zonificación? */

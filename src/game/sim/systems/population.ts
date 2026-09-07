@@ -141,7 +141,7 @@ export function updatePopulation(sim: CitySim) {
   sim.occupancyI = occCap.I > 0 ? occSum.I / occCap.I : 0;
 
   sim.households = Math.round(households);
-  sim.homesCapacity = Math.round(homesCapacity * HOUSEHOLD_SIZE);
+  sim.homesCapacity = Math.round(homesCapacity);
   sim.pop = Math.round(popRaw);
   sim.avgWellbeing = wellN ? wellSum / wellN : 0;
 

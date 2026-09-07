@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, type OverlayKind } from "../../sim/types";
@@ -31,7 +31,7 @@ export function ZonePlates() {
     m.opacity += (target - m.opacity) * 0.14;
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh || !sim) return;
     const g = sim.grid;
@@ -79,6 +79,7 @@ const RAMPS: Partial<Record<OverlayKind, Ramp>> = {
   education: { label: "Educación", stops: [[0, "#6b4f7a"], [1, "#8fd0e8"]] },
   health: { label: "Sanidad", stops: [[0, "#6b4f7a"], [1, "#4fd0a8"]] },
   safety: { label: "Seguridad", stops: [[0, "#6b4f7a"], [1, "#5f9ae8"]] },
+  fire: { label: "Bomberos", stops: [[0, "#6b4f7a"], [1, "#e07040"]] },
   garbage: { label: "Recogida", stops: [[0, "#6b4f7a"], [1, "#c9c14a"]] },
 };
 
@@ -119,7 +120,9 @@ function fieldValue(overlay: OverlayKind, i: number): number | null {
     case "health":
       return g.service.health![i]!;
     case "safety":
-      return g.service.police![i]!;
+      return Math.max(g.service.police![i]!, g.service.fire![i]!);
+    case "fire":
+      return g.service.fire![i]!;
     case "garbage":
       return g.service.garbage![i]!;
     default:
@@ -133,9 +136,12 @@ export function DataOverlay() {
   const rev = useSimVersion((s) => s.fieldsVersion + s.roadsVersion);
   const ref = useRef<THREE.InstancedMesh>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mesh = ref.current;
-    if (!mesh || !sim || overlay === "none") return;
+    if (!mesh || !sim || overlay === "none") {
+      if (mesh) mesh.count = 0;
+      return;
+    }
     const g = sim.grid;
     const ramp = RAMPS[overlay];
     let n = 0;

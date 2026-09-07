@@ -69,6 +69,7 @@ export type OverlayKind =
   | "education"
   | "health"
   | "safety"
+  | "fire"
   | "garbage";
 
 export interface Building {
