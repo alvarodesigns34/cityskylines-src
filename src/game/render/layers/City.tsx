@@ -17,8 +17,8 @@ const dummy = new THREE.Object3D();
 /** Ángulo por orientación: 0 = fachada al norte, 1 = este, 2 = sur, 3 = oeste. */
 const ROT_Y = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 
-function useCityMaterial() {
-  const mat = useMemo(() => createCityMaterial(), []);
+function useCityMaterial(look: "generic" | "facade" | "road" = "generic") {
+  const mat = useMemo(() => createCityMaterial({}, look), [look]);
   useEffect(() => () => mat.dispose(), [mat]);
   return mat;
 }
@@ -76,7 +76,7 @@ function InstancedBucket({
 
 export function Roads() {
   const rev = useSimVersion((s) => s.roadsVersion);
-  const material = useCityMaterial();
+  const material = useCityMaterial("road");
 
   const buckets = useMemo(() => {
     const map = new Map<string, Bucket>();
@@ -153,7 +153,7 @@ export function StreetLamps() {
 
 export function Buildings() {
   const rev = useSimVersion((s) => s.buildingsVersion);
-  const material = useMemo(() => createCityMaterial({}, true), []);
+  const material = useMemo(() => createCityMaterial({}, "facade"), []);
   useEffect(() => () => material.dispose(), [material]);
   const [lodKey, setLodKey] = useState("0,0,0");
   const lodRef = useRef(lodKey);

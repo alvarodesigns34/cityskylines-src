@@ -22,15 +22,15 @@ export function tickEvents(sim: CitySim) {
 
   if (!sim.seenFirstEvent && sim.day >= 3) {
     const roll = sim.rand();
-    startEvent(sim, roll < 0.34 ? "festival" : roll < 0.67 ? "boom" : "heatwave");
+    startEvent(sim, roll < 0.5 ? "festival" : "boom");
     sim.seenFirstEvent = true;
     return;
   }
 
   if (sim.day < 5) return;
   const since = sim.tickCount - sim.lastEventAt;
-  if (since < DAY * 4) return;
-  if (sim.rand() > 0.42) return;
+  if (since < DAY * 5) return;
+  if (sim.rand() > 0.3) return;
 
   const kind = pickKind(sim);
   if (kind) startEvent(sim, kind);
@@ -105,7 +105,7 @@ function pickKind(sim: CitySim): EventKind | null {
   if (sim.avgPollution > 0.28) push("strike", 3);
   if ((sim.serviceLevel.police ?? 0) < 0.25 && sim.pop > 90) push("crime", 3);
   if ((sim.serviceLevel.health ?? 0) < 0.22 && sim.pop > 110) push("outbreak", 3);
-  if ((sim.serviceLevel.fire ?? 0) < 0.2 && sim.tier >= 2 && sim.buildings.length > 18) push("firestorm", 2);
+  if ((sim.serviceLevel.fire ?? 0) < 0.2 && sim.tier >= 2 && sim.buildings.length > 28) push("firestorm", 1);
   if (sim.powerNeed > 40) push("outage", 2);
   if (sim.happiness > 58 && sim.occupancyR > 0.7) push("influx", 2);
   if (sim.occupancyC > 0.55) push("festival", 2);
@@ -175,8 +175,8 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         title: "Ola de calor",
         body: "El consumo de agua se dispara. Sin más depósitos o bombeo, los barrios se vacían.",
         tone: "warn",
-        water: 0.55,
-        happy: -10,
+        water: 0.38,
+        happy: -6,
         demandR: 0.7,
         endsAt: now + DAY * 4,
         choices: [
@@ -265,7 +265,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         title: "Avería en la red eléctrica",
         body: "Una central falla. Toda la ciudad parpadea hasta que reparas o pones otra.",
         tone: "warn",
-        power: 0.45,
+        power: 0.32,
         demandR: 0.75,
         demandC: 0.7,
         demandI: 0.65,

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getCityTextures } from "./textures";
 
 /** Uniformes compartidos por todos los materiales de ciudad. */
 export const cityUniforms = {
@@ -7,6 +8,10 @@ export const cityUniforms = {
   uTime: { value: 0 },
   uRain: { value: 0 },
 };
+
+export type CityLook = "generic" | "facade" | "road";
+
+const LOOK_ID: Record<CityLook, number> = { generic: 0, facade: 1, road: 2 };
 
 const CITY_GLSL = {
   vertexCommon: `#include <common>
@@ -30,6 +35,12 @@ const CITY_GLSL = {
          uniform float uRain;
          uniform float uTime;
          uniform float uFacade;
+         uniform float uLook;
+         uniform sampler2D uBrick;
+         uniform sampler2D uConcrete;
+         uniform sampler2D uPlaster;
+         uniform sampler2D uRoof;
+         uniform sampler2D uAsphalt;
          varying float vEmis;
          varying vec3 vWorldPos;
          varying vec3 vWorldN;
@@ -49,32 +60,48 @@ const CITY_GLSL = {
          float rim = pow(1.0 - ndv, 2.8);
          diffuseColor.rgb += vec3(0.55, 0.62, 0.78) * rim * (0.05 + uNight * 0.08);
 
-         // Fachada procedural: ladrillo, juntas de panel, teja y suciedad en el zócalo.
-         // El follaje pasa uFacade=0 para no pintar ladrillo en las copas.
          float facade = uFacade * (1.0 - smoothstep(0.12, 0.32, vEmis));
          float isRoof = smoothstep(0.58, 0.86, abs(wn.y));
          float wall = facade * (1.0 - isRoof);
-         float brickU = mix(vWorldPos.z, vWorldPos.x, step(abs(wn.x), abs(wn.z))) * 8.6;
-         float brickV = vWorldPos.y * 13.5;
-         float row = floor(brickV);
-         float bx = fract(brickU + mod(row, 2.0) * 0.5);
-         float by = fract(brickV);
-         float mortar = 1.0 - smoothstep(0.045, 0.09, min(min(bx, 1.0 - bx), min(by, 1.0 - by) * 1.55));
-         vec3 brickVar = mix(vec3(1.0), vec3(0.82, 0.78, 0.72), hash12(floor(vec2(brickU, brickV))));
-         diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * brickVar, wall * 0.28);
-         diffuseColor.rgb *= 1.0 - mortar * wall * 0.16;
+         vec2 uvW = vec2(mix(vWorldPos.z, vWorldPos.x, step(abs(wn.x), abs(wn.z))), vWorldPos.y);
+         vec3 brickTex = texture2D(uBrick, uvW * 0.92).rgb;
+         vec3 concTex = texture2D(uConcrete, uvW * 0.62).rgb;
+         vec3 plasTex = texture2D(uPlaster, uvW * 0.85).rgb;
+         float warmth = clamp((diffuseColor.r - diffuseColor.b) * 3.2 + 0.12, 0.0, 1.0);
+         float pale = smoothstep(0.52, 0.82, dot(diffuseColor.rgb, vec3(0.33)));
+         vec3 wallTex = mix(concTex, brickTex, warmth);
+         wallTex = mix(wallTex, plasTex, pale * (1.0 - warmth * 0.65));
+         float detail = mix(0.62, 1.22, (wallTex.r + wallTex.g + wallTex.b) * 0.333);
+         diffuseColor.rgb *= mix(1.0, detail, wall * 0.92);
+         float hL = texture2D(uBrick, uvW * 0.92 + vec2(-0.006, 0.0)).g;
+         float hR = texture2D(uBrick, uvW * 0.92 + vec2( 0.006, 0.0)).g;
+         float hD = texture2D(uBrick, uvW * 0.92 + vec2(0.0, -0.006)).g;
+         float hU = texture2D(uBrick, uvW * 0.92 + vec2(0.0,  0.006)).g;
+         vec3 bump = normalize(wn + vec3(hL - hR, hD - hU, 0.0) * wall * 1.6);
+         float bumpAo = 0.88 + 0.12 * bump.y;
+         diffuseColor.rgb *= mix(1.0, bumpAo, wall);
+
+         vec2 uvRoof = mix(vWorldPos.xz, uvW, step(0.35, 1.0 - abs(wn.y)));
+         vec3 roofTex = texture2D(uRoof, uvRoof * 1.05).rgb;
+         float roofDetail = mix(0.7, 1.18, (roofTex.r + roofTex.g) * 0.45);
+         diffuseColor.rgb *= mix(1.0, roofDetail, isRoof * facade);
+
          float panelY = abs(fract(vWorldPos.y * 1.15) - 0.5);
          float panelX = min(abs(fract(vWorldPos.x * 2.2) - 0.5), abs(fract(vWorldPos.z * 2.2) - 0.5));
          float groove = (1.0 - smoothstep(0.0, 0.035, panelY)) * 0.14
                       + (1.0 - smoothstep(0.0, 0.028, panelX)) * 0.08;
-         diffuseColor.rgb *= 1.0 - groove * wall * 0.85;
-         float tile = abs(fract(vWorldPos.x * 5.5 + vWorldPos.z * 5.5) - 0.5)
-                    + abs(fract((vWorldPos.x - vWorldPos.z) * 4.2) - 0.5);
-         diffuseColor.rgb *= mix(1.0, 0.86 + 0.16 * smoothstep(0.08, 0.4, tile), isRoof * facade);
-         float grime = exp(-max(vWorldPos.y, 0.0) * 1.55) * 0.2;
+         diffuseColor.rgb *= 1.0 - groove * wall * 0.55;
+         float grime = exp(-max(vWorldPos.y, 0.0) * 1.55) * 0.16;
          diffuseColor.rgb *= 1.0 - grime * facade;
          float glass = smoothstep(0.08, 0.28, vEmis) * uFacade;
-         diffuseColor.rgb = mix(diffuseColor.rgb, mix(diffuseColor.rgb, vec3(0.42, 0.56, 0.66), 0.4), glass);`,
+         vec3 glassCol = mix(vec3(0.18, 0.28, 0.36), vec3(0.55, 0.72, 0.82), pow(ndv, 2.0));
+         diffuseColor.rgb = mix(diffuseColor.rgb, glassCol, glass * 0.72);
+         diffuseColor.rgb += vec3(0.45, 0.55, 0.62) * glass * pow(1.0 - ndv, 2.2) * 0.35;
+
+         float isRoad = step(1.5, uLook) * (1.0 - smoothstep(0.12, 0.45, vEmis));
+         vec3 asph = texture2D(uAsphalt, vWorldPos.xz * 2.4).rgb;
+         float asphD = mix(0.72, 1.2, (asph.r + asph.g + asph.b) * 0.45);
+         diffuseColor.rgb *= mix(1.0, asphD, isRoad * 0.85);`,
   roughnessFrag: `#include <roughnessmap_fragment>
          roughnessFactor = mix(roughnessFactor, 0.14, clamp(uRain * 0.72 + uNight * 0.1, 0.0, 0.78));
          roughnessFactor = mix(roughnessFactor, 0.16, smoothstep(0.12, 0.7, vEmis));`,
@@ -89,12 +116,23 @@ const CITY_GLSL = {
          diffuseColor.rgb = mix(diffuseColor.rgb, warm * 0.55, lit * 0.38);`,
 };
 
-function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind = false, facade = 0) {
+function bindCityTextures(shader: THREE.WebGLProgramParametersWithUniforms) {
+  const tex = getCityTextures();
+  shader.uniforms.uBrick = { value: tex.brick };
+  shader.uniforms.uConcrete = { value: tex.concrete };
+  shader.uniforms.uPlaster = { value: tex.plaster };
+  shader.uniforms.uRoof = { value: tex.roof };
+  shader.uniforms.uAsphalt = { value: tex.asphalt };
+}
+
+function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind = false, look: CityLook = "generic") {
   shader.uniforms.uNight = cityUniforms.uNight;
   shader.uniforms.uLampColor = cityUniforms.uLampColor;
   shader.uniforms.uRain = cityUniforms.uRain;
   shader.uniforms.uTime = cityUniforms.uTime;
-  shader.uniforms.uFacade = { value: wind ? 0 : facade };
+  shader.uniforms.uFacade = { value: look === "facade" ? 1 : 0 };
+  shader.uniforms.uLook = { value: LOOK_ID[look] };
+  bindCityTextures(shader);
   const begin = wind
     ? `#include <begin_vertex>
          vEmis = aEmis;
@@ -138,15 +176,16 @@ function patchCityShader(shader: THREE.WebGLProgramParametersWithUniforms, wind 
  * AO falso, ruido de mundo y mojado viven aquí para que edificios, calles y coches
  * compartan el mismo look sin un segundo pase.
  */
-export function createCityMaterial(params: THREE.MeshStandardMaterialParameters = {}, facade = false) {
+export function createCityMaterial(params: THREE.MeshStandardMaterialParameters = {}, look: CityLook | boolean = "generic") {
+  const resolved: CityLook = look === true ? "facade" : look === false ? "generic" : look;
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.72,
     metalness: 0.06,
     ...params,
   });
-  mat.onBeforeCompile = (shader) => patchCityShader(shader, false, facade ? 1 : 0);
-  mat.customProgramCacheKey = () => (facade ? "city-pbr-v7-facade" : "city-pbr-v7");
+  mat.onBeforeCompile = (shader) => patchCityShader(shader, false, resolved);
+  mat.customProgramCacheKey = () => `city-pbr-v8b-${resolved}`;
   return mat;
 }
 
@@ -159,7 +198,7 @@ export function createFoliageMaterial(params: THREE.MeshStandardMaterialParamete
     ...params,
   });
   mat.onBeforeCompile = (shader) => patchCityShader(shader, true);
-  mat.customProgramCacheKey = () => "city-foliage-v3";
+  mat.customProgramCacheKey = () => "city-foliage-v4";
   return mat;
 }
 
@@ -172,8 +211,10 @@ export function createTerrainMaterial() {
     flatShading: false,
   });
   mat.onBeforeCompile = (shader) => {
+    const tex = getCityTextures();
     shader.uniforms.uNight = cityUniforms.uNight;
     shader.uniforms.uRain = cityUniforms.uRain;
+    shader.uniforms.uGrass = { value: tex.grass };
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
@@ -198,6 +239,7 @@ export function createTerrainMaterial() {
         `#include <common>
          uniform float uNight;
          uniform float uRain;
+         uniform sampler2D uGrass;
          varying vec3 vWorldPos;
          varying vec3 vWorldN;
          float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -222,14 +264,15 @@ export function createTerrainMaterial() {
          float n = fbm(vWorldPos.xz * 1.55);
          float n2 = fbm(vWorldPos.xz * 7.4 + 9.0);
          float n3 = noise(vWorldPos.xz * 28.0);
-         // Cuarta capa de altísima frecuencia: es lo que rompe el aspecto "pintura plana" al
-         // acercarse, sin necesidad de una textura real.
          float n4 = noise(vWorldPos.xz * 74.0 + 3.0) * 0.5 + noise(vWorldPos.xz * 140.0 - 5.0) * 0.5;
          vec3 lush = vec3(0.24, 0.45, 0.17);
          vec3 dry = vec3(0.52, 0.49, 0.25);
          vec3 clover = vec3(0.2, 0.39, 0.19);
          float dryness = smoothstep(0.34, 0.76, n);
          diffuseColor.rgb = mix(diffuseColor.rgb, mix(mix(lush, clover, n2), dry, dryness), 0.34);
+         vec3 grassTex = texture2D(uGrass, vWorldPos.xz * 1.85).rgb;
+         float gDetail = mix(0.78, 1.22, (grassTex.g * 0.7 + grassTex.r * 0.3));
+         diffuseColor.rgb *= mix(1.0, gDetail, 0.55 * (1.0 - dryness));
          diffuseColor.rgb *= 0.84 + n2 * 0.18 + n3 * 0.1 + (n4 - 0.5) * 0.14;
          float blades = abs(sin(vWorldPos.x * 38.0) * sin(vWorldPos.z * 34.0));
          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.78, 0.92, 0.7), blades * 0.12 * (1.0 - dryness));
@@ -246,7 +289,7 @@ export function createTerrainMaterial() {
          roughnessFactor -= n4 * 0.08;`,
       );
   };
-  mat.customProgramCacheKey = () => "terrain-noise-v2";
+  mat.customProgramCacheKey = () => "terrain-noise-v3";
   return mat;
 }
 
@@ -296,8 +339,6 @@ const waterFragment = /* glsl */ `
 
     float dist = length(cameraPosition - vWorld);
     float detail = smoothstep(280.0, 36.0, dist);
-    // Bandas y manchas a gran escala (corrientes, bajíos, reflejo difuso del cielo): sin esto
-    // el mar es un relleno plano en cuanto la cámara se aleja un poco.
     float swell = fbmW(vWorld.xz * 0.028 + uTime * 0.015) * 0.6 + fbmW(vWorld.xz * 0.07 - uTime * 0.01) * 0.4;
     float t = uTime;
     float dx = cos(vWorld.x * 0.55 + t * 0.9) * 0.022
@@ -316,14 +357,11 @@ const waterFragment = /* glsl */ `
     vec3 base = mix(uShallow, uDeep, depth);
     base *= (0.88 + swell * 0.24) * (1.0 - uRain * 0.18);
     vec3 col = mix(base, uSkyColor, fres * 0.68);
-    // Reflejo difuso del cielo, más fuerte donde el mar se ve más "liso" a lo lejos.
     col = mix(col, uSkyColor, (1.0 - detail) * 0.22);
 
     vec3 h = normalize(uSun + viewDir);
     float spec = pow(max(dot(n, h), 0.0), mix(90.0, 28.0, uRain));
     col += uSunColor * spec * (1.55 + uRain * 0.6) * (1.0 - uNight * 0.55) * detail;
-    // Destellos dispersos (glitter): sin esto el brillo del sol es un único punto y el resto
-    // del mar, lejos de ese punto, se ve muerto.
     float glitter = smoothstep(0.82, 1.0, fract(noiseW(vWorld.xz * 6.0 + uTime * 0.3)));
     col += uSunColor * glitter * spec * 2.2 * (1.0 - uNight * 0.7);
 
@@ -548,8 +586,6 @@ const cloudVertex = /* glsl */ `
   varying vec2 vUv;
   varying float vSeed;
   void main() {
-    // Plano de 1×1: se usa como billboard, no como malla real, así que su posición local
-    // (−0.5..0.5) es directamente la coordenada de forma de la nube.
     vUv = position.xy * 2.0;
     vSeed = aSeed;
     vec4 center = modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
@@ -579,7 +615,6 @@ const cloudFragment = /* glsl */ `
   }
 
   void main() {
-    // Varios lóbulos redondeados desplazados: la silueta deja de ser una elipse perfecta.
     vec2 p = vUv;
     float base = 1.0 - length(p);
     float lobes = 0.0;
@@ -594,7 +629,6 @@ const cloudFragment = /* glsl */ `
     float alpha = smoothstep(0.02, 0.62, shape) * uOpacity;
     if (alpha < 0.01) discard;
     vec3 col = mix(uColor, uColor * 0.4, uNight);
-    // Sombra propia leve en la base del lóbulo para dar volumen sin luz real.
     col *= 0.86 + 0.14 * smoothstep(-0.3, 0.5, p.y);
     gl_FragColor = vec4(col, alpha);
     #include <colorspace_fragment>

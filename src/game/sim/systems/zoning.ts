@@ -182,8 +182,18 @@ export function updateAbandon(sim: CitySim) {
 }
 
 /** El fuego ya no es un sorteo silencioso: arde, se ve y salta al vecino si no hay bomberos. */
+const FIRE_CAP = 3;
+const FIRE_CAP_STORM = 5;
+
+function countBurning(sim: CitySim): number {
+  let n = 0;
+  for (const b of sim.buildings) if (b.burning > 0) n++;
+  return n;
+}
+
 export function tickFires(sim: CitySim) {
   const storm = sim.event?.kind === "firestorm";
+  const cap = storm ? FIRE_CAP_STORM : FIRE_CAP;
   let ignited = false;
   let burned = 0;
   let extinguished = false;
@@ -194,15 +204,15 @@ export function tickFires(sim: CitySim) {
     const b = sim.buildings[k]!;
     if (!already.has(b.id)) continue;
     b.burning -= 1;
-    b.occupancy = Math.max(0, b.occupancy - 0.08);
+    b.occupancy = Math.max(0, b.occupancy - 0.05);
     const cover = fireCover(sim, b);
-    if (cover > 0.45 && sim.rand() < cover * 0.35) {
+    if (cover > 0.45 && sim.rand() < cover * 0.42) {
       b.burning = 0;
       extinguished = true;
       continue;
     }
-    if (storm || sim.rand() < 0.18) {
-      if (spreadFire(sim, b)) ignited = true;
+    if (countBurning(sim) < cap && (storm ? sim.rand() < 0.55 : sim.rand() < 0.12)) {
+      if (spreadFire(sim, b, cap)) ignited = true;
     }
     if (b.burning <= 0 || b.occupancy < 0.04) {
       removeBuilding(sim, k);
@@ -210,17 +220,18 @@ export function tickFires(sim: CitySim) {
     }
   }
 
-  const canStart = sim.buildings.length > 10 && (sim.tier >= 1 || storm);
+  const canStart = sim.buildings.length > 10 && (sim.tier >= 1 || storm) && countBurning(sim) < cap;
   if (canStart) {
-    const tries = storm ? 3 : 1;
+    const tries = storm ? 2 : 1;
     for (let t = 0; t < tries; t++) {
+      if (countBurning(sim) >= cap) break;
       const k = (sim.rand() * sim.buildings.length) | 0;
       const b = sim.buildings[k];
       if (!b || b.burning > 0 || DEFS[b.kind]!.zone === "none") continue;
       const cover = fireCover(sim, b);
-      const risk = (1 - cover) * (storm ? 0.12 : 0.0014) * (1 + DEFS[b.kind]!.pollution * 0.5);
+      const risk = (1 - cover) * (storm ? 0.035 : 0.0012) * (1 + DEFS[b.kind]!.pollution * 0.5);
       if (sim.rand() < risk) {
-        b.burning = storm ? 28 : 18;
+        b.burning = storm ? 22 : 16;
         ignited = true;
       }
     }
@@ -249,7 +260,7 @@ function fireCover(sim: CitySim, b: { x: number; z: number; w: number; d: number
   return Math.min(1, best + sim.fireBoost);
 }
 
-function spreadFire(sim: CitySim, b: { x: number; z: number; w: number; d: number }): boolean {
+function spreadFire(sim: CitySim, b: { x: number; z: number; w: number; d: number }, cap: number): boolean {
   const g = sim.grid;
   let spread = false;
   const dirs = [
@@ -261,6 +272,7 @@ function spreadFire(sim: CitySim, b: { x: number; z: number; w: number; d: numbe
   for (let zz = 0; zz < b.d; zz++) {
     for (let xx = 0; xx < b.w; xx++) {
       for (const [dx, dz] of dirs) {
+        if (countBurning(sim) >= cap) return spread;
         const i = g.at(b.x + xx + dx, b.z + zz + dz);
         if (i < 0) continue;
         const bi = g.building[i]!;
@@ -270,7 +282,7 @@ function spreadFire(sim: CitySim, b: { x: number; z: number; w: number; d: numbe
         if (DEFS[n.kind]!.zone === "none") continue;
         const cover = Math.min(1, g.service.fire![i]! + sim.fireBoost);
         if (cover > 0.55) continue;
-        if (sim.rand() < 0.28 * (1 - cover)) {
+        if (sim.rand() < 0.22 * (1 - cover)) {
           n.burning = 16;
           spread = true;
         }

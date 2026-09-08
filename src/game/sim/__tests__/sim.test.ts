@@ -6,7 +6,7 @@ import { DEFS, ROADS, TIERS } from "../catalog";
 import { generateMap } from "../generate";
 import { ZONE_DEPTH } from "../systems/network";
 import { OCCUPANCY_DRAIN } from "../systems/population";
-import { startEvent } from "../systems/events";
+import { startEvent, tickEvents } from "../systems/events";
 import { tickFires, updateAbandon } from "../systems/zoning";
 import { N, ROAD, SIM_DT, TERRAIN, TICKS_PER_DAY, idx, type Building } from "../types";
 
@@ -695,5 +695,28 @@ test("los bomberos se desbloquean en Pueblo", () => {
   sim.money = 50000;
   assert.ok(sim.isUnlocked("fire"), "parque de bomberos en Pueblo");
   assert.equal(DEFS.fire!.tier, 1);
+});
+
+test("el primer episodio es feria o auge, no una catástrofe", () => {
+  for (let i = 0; i < 12; i++) {
+    const sim = new CitySim(SEED + i);
+    sim.pop = 80;
+    sim.day = 3;
+    sim.seenFirstEvent = false;
+    tickEvents(sim);
+    const kind = sim.event?.kind;
+    assert.ok(kind === "festival" || kind === "boom", String(kind));
+  }
+});
+
+test("un firestorm no arrasa la ciudad", () => {
+  const sim = seededCity();
+  run(sim, 800);
+  const before = sim.buildings.filter((b) => DEFS[b.kind]!.zone !== "none").length;
+  assert.ok(before > 20, `ciudad con edificios: ${before}`);
+  startEvent(sim, "firestorm");
+  run(sim, TICKS_PER_DAY * 3 + 60);
+  const after = sim.buildings.filter((b) => DEFS[b.kind]!.zone !== "none").length;
+  assert.ok(after > before * 0.55, `sobreviven ${after}/${before}`);
 });
 
