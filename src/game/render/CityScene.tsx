@@ -6,7 +6,7 @@ import { sim, useGame } from "../store";
 import { CameraRig } from "./CameraRig";
 import { skyFor } from "./daynight";
 import { Buildings, Grass, Roads, StreetLamps, Vegetation } from "./layers/City";
-import { Clouds, Rain, Smoke, Vehicles } from "./layers/Effects";
+import { Clouds, FireGlow, Rain, Smoke, Vehicles } from "./layers/Effects";
 import { DataOverlay, Ghost, Selection, ZonePlates } from "./layers/Overlays";
 import { Horizon, Sky, Terrain, Water } from "./layers/Terrain";
 import { cityUniforms } from "./materials";
@@ -57,6 +57,7 @@ function SceneRoot({ interactive }: { interactive: boolean }) {
           <Buildings />
           <Vehicles />
           <Smoke />
+          <FireGlow />
           <Clouds />
           <Rain />
           {interactive ? <ZonePlates /> : null}
@@ -79,6 +80,7 @@ function SimTicker({ interactive }: { interactive: boolean }) {
   const saveAcc = useRef(0);
   const frames = useRef(0);
   const fpsAcc = useRef(0);
+  const persistTimer = useRef(0);
   const { gl } = useThree();
   const pull = useGame((s) => s.pullSnapshot);
   const persist = useGame((s) => s.persistNow);
@@ -86,6 +88,13 @@ function SimTicker({ interactive }: { interactive: boolean }) {
   useEffect(() => {
     gl.shadowMap.needsUpdate = true;
   }, [gl]);
+
+  useEffect(
+    () => () => {
+      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+    },
+    [],
+  );
 
   useFrame((_, dt) => {
     frames.current += 1;
@@ -120,7 +129,8 @@ function SimTicker({ interactive }: { interactive: boolean }) {
         saveAcc.current = 0;
         // Fuera del frame: stringify + localStorage no pueden robar el swap.
         const later = persist;
-        window.setTimeout(() => later(false), 0);
+        if (persistTimer.current) window.clearTimeout(persistTimer.current);
+        persistTimer.current = window.setTimeout(() => later(false), 0);
       }
     }
   });

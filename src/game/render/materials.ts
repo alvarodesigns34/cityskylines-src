@@ -485,10 +485,13 @@ const smokeVertex = /* glsl */ `
   attribute vec2 aCorner;
   attribute float aSeed;
   attribute float aScale;
+  attribute float aHeat;
   varying float vLife;
   varying vec2 vCorner;
+  varying float vHeat;
   void main() {
     vCorner = aCorner;
+    vHeat = aHeat;
     float life = fract(uTime * 0.16 + aSeed);
     vLife = life;
     float rise = life * (2.6 + aSeed * 1.6);
@@ -507,11 +510,13 @@ const smokeFragment = /* glsl */ `
   uniform float uOpacity;
   varying float vLife;
   varying vec2 vCorner;
+  varying float vHeat;
   void main() {
     float r = length(vCorner);
     float alpha = smoothstep(1.0, 0.15, r) * (1.0 - vLife) * uOpacity * 0.42;
     if (alpha < 0.005) discard;
-    gl_FragColor = vec4(uColor, alpha);
+    vec3 col = mix(uColor, vec3(0.92, 0.32, 0.08), vHeat);
+    gl_FragColor = vec4(col, alpha);
     #include <colorspace_fragment>
   }
 `;

@@ -3,7 +3,6 @@ import { DEFS, ROADS } from "./sim/catalog";
 import { CitySim, loadOrNull } from "./sim/city";
 import { hasSave } from "./sim/save";
 import { repayLoan, setTax, takeLoan } from "./sim/systems/economy";
-import { startEvent } from "./sim/systems/events";
 import { TICKS_PER_DAY, type EventKind, type OverlayKind, type PolicyId, type Snapshot, type Tool } from "./sim/types";
 
 export type Phase = "menu" | "playing";
@@ -101,7 +100,7 @@ function exposeQa() {
       return city;
     },
     triggerEvent: (kind: EventKind) => {
-      startEvent(city, kind);
+      city.triggerEvent(kind);
       useGame.getState().pullSnapshot();
     },
     resolveEvent: (id: string) => {

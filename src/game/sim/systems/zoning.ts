@@ -53,14 +53,16 @@ export function updateDemand(sim: CitySim) {
   if (sim.pop > 40 && sim.unemployment > 0.28) dR *= 0.35;
   // Nadie se muda a una ciudad que no funciona.
   if (sim.happiness < 28) dR *= 0.25 + (sim.happiness / 28) * 0.5;
-  if (sim.pop < 45) dR = Math.max(dR, 0.62);
-  if (commercialJobs < 1) dC = Math.max(dC, 0.34);
-  if (industrialJobs < 1) dI = Math.max(dI, 0.32);
-  if (sim.pop > 25 && sim.jobs < sim.workers * 0.8) {
-    dC = Math.max(dC, 0.5);
-    dI = Math.max(dI, 0.55);
+  // Los suelos de arranque no deben tapar un episodio: si hay recesión, que se note.
+  if (!sim.event) {
+    if (sim.pop < 45) dR = Math.max(dR, 0.62);
+    if (commercialJobs < 1) dC = Math.max(dC, 0.34);
+    if (industrialJobs < 1) dI = Math.max(dI, 0.32);
+    if (sim.pop > 25 && sim.jobs < sim.workers * 0.8) {
+      dC = Math.max(dC, 0.5);
+      dI = Math.max(dI, 0.55);
+    }
   }
-
   if (sim.policies.housingGrant) dR += 0.14;
   if (sim.policies.cleanIndustry) dI *= 0.86;
 
@@ -170,6 +172,7 @@ export function updateAbandon(sim: CitySim) {
     const b = sim.buildings[k]!;
     const d = DEFS[b.kind]!;
     if (d.zone === "none") continue;
+    if (b.burning > 0) continue;
     if (b.age < 120) continue;
     if (b.occupancy > 0.06 || b.wellbeing > 0.2) continue;
     removeBuilding(sim, k);
@@ -179,23 +182,28 @@ export function updateAbandon(sim: CitySim) {
 }
 
 /** El fuego ya no es un sorteo silencioso: arde, se ve y salta al vecino si no hay bomberos. */
-function tickFires(sim: CitySim) {
-  const g = sim.grid;
+export function tickFires(sim: CitySim) {
   const storm = sim.event?.kind === "firestorm";
   let ignited = false;
   let burned = 0;
+  let extinguished = false;
+  const already = new Set<number>();
+  for (const b of sim.buildings) if (b.burning > 0) already.add(b.id);
 
   for (let k = sim.buildings.length - 1; k >= 0; k--) {
     const b = sim.buildings[k]!;
-    if (b.burning <= 0) continue;
+    if (!already.has(b.id)) continue;
     b.burning -= 1;
     b.occupancy = Math.max(0, b.occupancy - 0.08);
-    const cover = Math.min(1, g.service.fire![idx(b.x, b.z)]! + sim.fireBoost);
+    const cover = fireCover(sim, b);
     if (cover > 0.45 && sim.rand() < cover * 0.35) {
       b.burning = 0;
+      extinguished = true;
       continue;
     }
-    if (storm || sim.rand() < 0.18) spreadFire(sim, b.x, b.z);
+    if (storm || sim.rand() < 0.18) {
+      if (spreadFire(sim, b)) ignited = true;
+    }
     if (b.burning <= 0 || b.occupancy < 0.04) {
       removeBuilding(sim, k);
       burned++;
@@ -209,7 +217,7 @@ function tickFires(sim: CitySim) {
       const k = (sim.rand() * sim.buildings.length) | 0;
       const b = sim.buildings[k];
       if (!b || b.burning > 0 || DEFS[b.kind]!.zone === "none") continue;
-      const cover = Math.min(1, g.service.fire![idx(b.x, b.z)]! + sim.fireBoost);
+      const cover = fireCover(sim, b);
       const risk = (1 - cover) * (storm ? 0.12 : 0.0014) * (1 + DEFS[b.kind]!.pollution * 0.5);
       if (sim.rand() < risk) {
         b.burning = storm ? 28 : 18;
@@ -224,29 +232,52 @@ function tickFires(sim: CitySim) {
   } else if (ignited) {
     sim.markBuildingsChanged();
     sim.pushNotice("fire", "Hay un incendio. Sin bomberos cerca se va a extender.", "warn");
+  } else if (extinguished) {
+    sim.markBuildingsChanged();
   }
 }
 
-function spreadFire(sim: CitySim, x: number, z: number) {
+function fireCover(sim: CitySim, b: { x: number; z: number; w: number; d: number }): number {
   const g = sim.grid;
+  let best = 0;
+  for (let zz = 0; zz < b.d; zz++) {
+    for (let xx = 0; xx < b.w; xx++) {
+      const i = g.at(b.x + xx, b.z + zz);
+      if (i >= 0) best = Math.max(best, g.service.fire![i]!);
+    }
+  }
+  return Math.min(1, best + sim.fireBoost);
+}
+
+function spreadFire(sim: CitySim, b: { x: number; z: number; w: number; d: number }): boolean {
+  const g = sim.grid;
+  let spread = false;
   const dirs = [
     [1, 0],
     [-1, 0],
     [0, 1],
     [0, -1],
   ] as const;
-  for (const [dx, dz] of dirs) {
-    const i = g.at(x + dx, z + dz);
-    if (i < 0) continue;
-    const bi = g.building[i]!;
-    if (bi < 0) continue;
-    const n = sim.buildings[bi];
-    if (!n || n.burning > 0) continue;
-    if (DEFS[n.kind]!.zone === "none") continue;
-    const cover = Math.min(1, g.service.fire![i]! + sim.fireBoost);
-    if (cover > 0.55) continue;
-    if (sim.rand() < 0.28 * (1 - cover)) n.burning = 16;
+  for (let zz = 0; zz < b.d; zz++) {
+    for (let xx = 0; xx < b.w; xx++) {
+      for (const [dx, dz] of dirs) {
+        const i = g.at(b.x + xx + dx, b.z + zz + dz);
+        if (i < 0) continue;
+        const bi = g.building[i]!;
+        if (bi < 0) continue;
+        const n = sim.buildings[bi];
+        if (!n || n.burning > 0) continue;
+        if (DEFS[n.kind]!.zone === "none") continue;
+        const cover = Math.min(1, g.service.fire![i]! + sim.fireBoost);
+        if (cover > 0.55) continue;
+        if (sim.rand() < 0.28 * (1 - cover)) {
+          n.burning = 16;
+          spread = true;
+        }
+      }
+    }
   }
+  return spread;
 }
 
 /** Sustituye un edificio por el siguiente de su familia, ampliando la parcela si hace falta. */

@@ -7,6 +7,7 @@ import { generateMap } from "../generate";
 import { ZONE_DEPTH } from "../systems/network";
 import { OCCUPANCY_DRAIN } from "../systems/population";
 import { startEvent } from "../systems/events";
+import { tickFires, updateAbandon } from "../systems/zoning";
 import { N, ROAD, SIM_DT, TERRAIN, TICKS_PER_DAY, idx, type Building } from "../types";
 
 const SEED = 4242;
@@ -625,5 +626,74 @@ test("la universidad es única y se desbloquea en Ciudad", () => {
     1,
   );
   assert.equal(place(city, "university"), false, "la segunda se rechaza");
+});
+
+test("sin fondos no se consume el episodio", () => {
+  const sim = seededCity();
+  sim.money = 100;
+  startEvent(sim, "recession");
+  const nChoices = sim.event?.choices.length ?? 0;
+  assert.equal(sim.chooseEvent("stimulus"), false);
+  assert.equal(sim.event?.kind, "recession");
+  assert.equal(sim.event?.choices.length, nChoices, "siguen todas las opciones");
+  assert.ok(sim.notices.some((n) => n.key === "broke"));
+  assert.equal(sim.chooseEvent("no_existe"), false, "un id desconocido no aplica la primera opción");
+  assert.equal(sim.event?.kind, "recession");
+});
+
+test("el fuego salta al vecino y no encadena el mismo tick", () => {
+  const sim = seededCity();
+  run(sim, 700);
+  const houses = sim.buildings.filter((b) => DEFS[b.kind]!.zone === "R");
+  let a: Building | null = null;
+  let neighbor: Building | null = null;
+  for (const x of houses) {
+    for (const y of houses) {
+      if (x.id === y.id) continue;
+      const xAdj = x.x + x.w === y.x || y.x + y.w === x.x;
+      const zOver = x.z < y.z + y.d && y.z < x.z + x.d;
+      const zAdj = x.z + x.d === y.z || y.z + y.d === x.z;
+      const xOver = x.x < y.x + y.w && y.x < x.x + x.w;
+      if ((xAdj && zOver) || (zAdj && xOver)) {
+        a = x;
+        neighbor = y;
+        break;
+      }
+    }
+    if (a) break;
+  }
+  assert.ok(a && neighbor, "hay dos casas pegadas");
+  sim.rand = () => 0.01;
+  a!.burning = 20;
+  startEvent(sim, "firestorm");
+  tickFires(sim);
+  assert.ok(neighbor!.burning > 0, "el fuego salta al vecino");
+  assert.equal(neighbor!.burning, 16, "el vecino no se procesa el mismo tick");
+  assert.ok(sim.snapshot().burning >= 2);
+});
+
+test("un edificio en llamas no se abandona en silencio", () => {
+  const sim = seededCity();
+  run(sim, 600);
+  const house = sim.buildings.find((b) => DEFS[b.kind]!.zone === "R");
+  assert.ok(house, "hay una casa");
+  house!.burning = 12;
+  house!.occupancy = 0.02;
+  house!.wellbeing = 0.01;
+  house!.age = 400;
+  sim.noticeCooldown.clear();
+  updateAbandon(sim);
+  assert.ok(
+    sim.notices.some((n) => n.key === "fire") || !sim.buildings.some((b) => b.id === house!.id),
+    "el fuego avisa o derriba, no desaparece como abandono",
+  );
+});
+
+test("los bomberos se desbloquean en Pueblo", () => {
+  const sim = new CitySim(SEED);
+  sim.tier = 1;
+  sim.money = 50000;
+  assert.ok(sim.isUnlocked("fire"), "parque de bomberos en Pueblo");
+  assert.equal(DEFS.fire!.tier, 1);
 });
 

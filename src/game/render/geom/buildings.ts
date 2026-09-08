@@ -405,6 +405,75 @@ function civic(ctx: Ctx): Part[] {
   return out;
 }
 
+/** Campus: patio, dos alas y torre del reloj. No es un civic más. */
+function university(ctx: Ctx): Part[] {
+  const out: Part[] = [];
+  const fh = ctx.style.floorH;
+  const wall = ctx.wall;
+  const W = ctx.w;
+  const D = ctx.d;
+
+  out.push(box(0, 0.03, 0, W * 0.96, 0.06, D * 0.96, 0x4a8a4e));
+  out.push(box(0, 0.055, 0.05, 0.26, 0.04, D * 0.72, 0xc9bb96));
+  out.push(box(0, 0.055, 0.2, W * 0.62, 0.04, 0.2, 0xc9bb96));
+
+  const mainH = 3 * fh;
+  const wingH = 2 * fh;
+
+  out.push(box(0, 0.08, D * 0.28, W * 0.86, 0.1, D * 0.4, ctx.p.base));
+  out.push(box(0, mainH / 2 + 0.1, D * 0.28, W * 0.78, mainH, D * 0.32, wall));
+  facade({
+    out, ctx, face: "z-", cx: 0, cz: D * 0.28, half: W * 0.39, depth: D * 0.16,
+    y0: 0.1, floors: 3, floorH: fh, style: "grid",
+  });
+  facade({
+    out, ctx, face: "z+", cx: 0, cz: D * 0.28, half: W * 0.39, depth: D * 0.16,
+    y0: 0.1, floors: 3, floorH: fh, style: "grid",
+  });
+  out.push({ g: "hip", x: 0, y: mainH + 0.1, z: D * 0.28, sx: W * 0.84, sy: 0.42, sz: D * 0.36, color: ctx.p.roof });
+
+  out.push(box(-W * 0.34, wingH / 2 + 0.1, -D * 0.06, W * 0.22, wingH, D * 0.52, wall));
+  facade({
+    out, ctx, face: "z-", cx: -W * 0.34, cz: -D * 0.06, half: W * 0.11, depth: D * 0.26,
+    y0: 0.1, floors: 2, floorH: fh, style: "grid",
+  });
+  out.push({ g: "hip", x: -W * 0.34, y: wingH + 0.1, z: -D * 0.06, sx: W * 0.26, sy: 0.28, sz: D * 0.56, color: ctx.p.roof });
+
+  out.push(box(W * 0.34, wingH / 2 + 0.1, -D * 0.06, W * 0.22, wingH, D * 0.52, wall));
+  facade({
+    out, ctx, face: "z-", cx: W * 0.34, cz: -D * 0.06, half: W * 0.11, depth: D * 0.26,
+    y0: 0.1, floors: 2, floorH: fh, style: "grid",
+  });
+  out.push({ g: "hip", x: W * 0.34, y: wingH + 0.1, z: -D * 0.06, sx: W * 0.26, sy: 0.28, sz: D * 0.56, color: ctx.p.roof });
+
+  const tx = -W * 0.38;
+  const tz = -D * 0.34;
+  const th = mainH + 1.35;
+  out.push(box(tx, th / 2 + 0.08, tz, 0.44, th, 0.44, shade(wall, -0.05)));
+  out.push(box(tx, th - 0.38, tz - 0.23, 0.22, 0.22, 0.04, 0xf4eee0, { emis: 0.55 }));
+  out.push(box(tx, th - 0.38, tz + 0.23, 0.22, 0.22, 0.04, 0xf4eee0, { emis: 0.45 }));
+  out.push(box(tx - 0.23, th - 0.38, tz, 0.04, 0.22, 0.22, 0xf4eee0, { emis: 0.4 }));
+  out.push({ g: "hip", x: tx, y: th + 0.08, z: tz, sx: 0.54, sy: 0.4, sz: 0.54, color: ctx.p.roof });
+  out.push(cyl(tx, th + 0.55, tz, 0.04, 0.48, ctx.p.accent, { seg: 6 }));
+  out.push({ g: "sphere", x: tx, y: th + 0.82, z: tz, sx: 0.07, sy: 0, sz: 0, color: ctx.p.accent, emis: 0.9, seg: 6 });
+
+  for (const x of [-0.42, -0.14, 0.14, 0.42]) {
+    out.push(cyl(x, 0.12 + fh * 0.7, D * 0.1, 0.05, fh * 1.35, ctx.p.trim, { seg: 8 }));
+  }
+  out.push(box(0, 0.12 + fh * 1.42, D * 0.1, W * 0.52, 0.1, 0.28, ctx.p.trim));
+  out.push(box(0, 0.12 + fh * 0.7, D * 0.12, 0.38, fh * 1.15, 0.05, ctx.p.window, { emis: 0.55 }));
+
+  for (const [x, z] of [
+    [-0.55, -0.22],
+    [0.55, -0.22],
+    [0.05, -0.5],
+  ] as const) {
+    out.push(cyl(x, 0.16, z, 0.035, 0.28, 0x6b5344, { seg: 5 }));
+    out.push({ g: "sphere", x, y: 0.48, z, sx: 0.2, sy: 0, sz: 0, color: 0x3f7f45, seg: 7 });
+  }
+  return out;
+}
+
 function plant(ctx: Ctx, kind: string): Part[] {
   const out: Part[] = [];
   const fill = ctx.style.fill ?? 0.92;
@@ -594,6 +663,7 @@ export function partsForBuilding(kind: string, variant: number): Part[] {
   if (!def) return [box(0, 0.3, 0, 0.6, 0.6, 0.6, 0x888888)];
   const ctx = ctxFor(def, variant);
   if (kind === "water_tower") return waterTower(ctx);
+  if (kind === "university") return university(ctx);
   switch (def.style.shape) {
     case "house":
       return house(ctx);
@@ -642,6 +712,16 @@ export function lodGeometry(kind: string): THREE.BufferGeometry {
     g = mergeParts([
       cyl(0, 0.55, 0, 0.28, 1.1, ctx.p.accent, { seg: 8 }),
       { g: "cone", x: 0, y: 1.22, z: 0, sx: 0.3, sy: 0.22, sz: 0.3, color: shade(ctx.p.accent, -0.1), seg: 8 },
+    ]);
+  } else if (kind === "university") {
+    const h = Math.max(1.6, ctx.style.floors * ctx.style.floorH * 0.7);
+    g = mergeParts([
+      box(0, 0.04, 0, hw * 2, 0.08, hd * 2, 0x4a8a4e),
+      box(0, h / 2 + 0.05, hd * 0.28, hw * 1.55, h, hd * 0.7, ctx.wall),
+      box(-hw * 0.7, h * 0.38, -hd * 0.1, hw * 0.42, h * 0.72, hd * 1.1, ctx.wall),
+      box(hw * 0.7, h * 0.38, -hd * 0.1, hw * 0.42, h * 0.72, hd * 1.1, ctx.wall),
+      box(-hw * 0.85, h * 0.95, -hd * 0.55, 0.38, h * 1.7, 0.38, shade(ctx.wall, -0.05)),
+      box(0, h + 0.18, hd * 0.28, hw * 1.6, 0.14, hd * 0.74, ctx.p.roof),
     ]);
   } else if (ctx.style.shape === "flat") {
     g = mergeParts([box(0, 0.07, 0, hw * 2, 0.14, hd * 2, ctx.wall)]);

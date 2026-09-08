@@ -40,8 +40,8 @@ export function GameShell() {
       if (document.hidden && useGame.getState().phase === "playing") useGame.getState().persistNow(false);
     };
     const blurHud = (e: PointerEvent) => {
-      const btn = (e.target as HTMLElement | null)?.closest("button");
-      if (btn && btn.closest(".game-root")) btn.blur();
+      const el = (e.target as HTMLElement | null)?.closest("button, input, select, textarea") as HTMLElement | null;
+      if (el && el.closest(".game-root")) el.blur();
     };
     document.addEventListener("visibilitychange", onHide);
     document.addEventListener("pointerup", blurHud);
@@ -197,6 +197,7 @@ function PlayHud() {
               {snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
               {paused ? " · pausa" : ""}
               {snapshot.cycle < -0.4 ? " · recesión" : snapshot.cycle > 0.4 ? " · auge" : ""}
+              {snapshot.burning > 0 ? ` · ${snapshot.burning} en llamas` : ""}
             </p>
           </div>
           <Chip icon={<Users className="size-3.5 text-zone-r" />} value={num(snapshot.pop)} label="hab." />
@@ -256,37 +257,6 @@ function PlayHud() {
           </IconBtn>
         </div>
       </header>
-
-      {snapshot.event ? (
-        <div className="pointer-events-none absolute inset-x-0 top-[4.6rem] z-20 flex justify-center px-3 max-sm:top-auto max-sm:bottom-[11.5rem]">
-          <div
-            className={`pointer-events-auto hud-panel w-full max-w-md rounded-2xl px-3 py-2.5 ${
-              snapshot.event.tone === "warn" ? "ring-1 ring-danger/40" : snapshot.event.tone === "good" ? "ring-1 ring-ok/35" : ""
-            }`}
-          >
-            <p className={`text-xs font-medium ${snapshot.event.tone === "warn" ? "text-danger" : snapshot.event.tone === "good" ? "text-ok" : "text-fg"}`}>
-              {snapshot.event.title}
-            </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted">{snapshot.event.body}</p>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {snapshot.event.choices.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  title={c.hint}
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    chooseEvent(c.id);
-                  }}
-                  className="hud-chip text-[11px] text-fg"
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* --- columna izquierda --- */}
       <div className="pointer-events-none absolute top-24 left-3 flex w-[min(100%-1.5rem,15.5rem)] flex-col gap-2 max-sm:w-[min(48vw,13.5rem)] sm:left-4">
@@ -351,6 +321,49 @@ function PlayHud() {
 
       {/* --- columna derecha --- */}
       <div className="pointer-events-none absolute top-24 right-3 flex w-[min(100%-1.5rem,17rem)] flex-col items-end gap-2 max-sm:top-auto max-sm:bottom-28 max-sm:w-[min(48vw,14rem)] sm:right-4">
+        {snapshot.event ? (
+          <div
+            className={`pointer-events-auto hud-panel relative z-30 w-full rounded-2xl px-3 py-2.5 ${
+              snapshot.event.tone === "warn"
+                ? "ring-1 ring-danger/40"
+                : snapshot.event.tone === "good"
+                  ? "ring-1 ring-ok/35"
+                  : ""
+            }`}
+          >
+            <p
+              className={`text-xs font-medium ${
+                snapshot.event.tone === "warn" ? "text-danger" : snapshot.event.tone === "good" ? "text-ok" : "text-fg"
+              }`}
+            >
+              {snapshot.event.title}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">{snapshot.event.body}</p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {snapshot.event.choices.map((c) => {
+                const cost = c.cost ?? 0;
+                const broke = cost > 0 && snapshot.money < cost;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    title={broke ? "No hay fondos para esa medida." : c.hint}
+                    disabled={broke}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      chooseEvent(c.id);
+                    }}
+                    className={`hud-chip text-[11px] ${
+                      broke ? "cursor-not-allowed opacity-40" : c.id === "wait" ? "text-muted" : "text-fg"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
         {panel === "none" ? (
           <>
             <Inspector />

@@ -89,10 +89,15 @@ export function Smoke() {
     const seeds: number[] = [];
     const scales: number[] = [];
     const positions: number[] = [];
+    const heats: number[] = [];
     if (sim) {
       const g = sim.grid;
       let sources = 0;
-      for (const b of sim.buildings) {
+      const ordered = [
+        ...sim.buildings.filter((b) => b.burning > 0),
+        ...sim.buildings.filter((b) => b.burning <= 0),
+      ];
+      for (const b of ordered) {
         const def = DEFS[b.kind]!;
         const onFire = b.burning > 0;
         if (!onFire && (!def.style.chimneys || b.occupancy < 0.2)) continue;
@@ -116,10 +121,10 @@ export function Smoke() {
           const wx = b.x + b.w / 2 + (lx * cos + lz * sin);
           const wz = b.z + b.d / 2 + (-lx * sin + lz * cos);
           const wy = Math.max(0.02, top) + ly;
-          const puffs = 5;
+          const puffs = onFire ? 7 : 5;
           for (let p = 0; p < puffs; p++) {
             const seed = hash2(b.id * 13 + p, Math.round(lx * 100), 71);
-            const scale = 0.32 + hash2(b.id + p, p, 73) * 0.35 + def.pollution * 0.12 + (onFire ? 0.4 : 0);
+            const scale = 0.32 + hash2(b.id + p, p, 73) * 0.35 + def.pollution * 0.12 + (onFire ? 0.45 : 0);
             for (const [ux, uy] of [
               [-1, -1],
               [1, -1],
@@ -133,6 +138,7 @@ export function Smoke() {
               corners.push(ux, uy);
               seeds.push(seed);
               scales.push(scale);
+              heats.push(onFire ? 1 : 0);
             }
           }
           sources++;
@@ -145,6 +151,7 @@ export function Smoke() {
     geo.setAttribute("aCorner", new THREE.Float32BufferAttribute(corners.length ? corners : [0, 0], 2));
     geo.setAttribute("aSeed", new THREE.Float32BufferAttribute(seeds.length ? seeds : [0], 1));
     geo.setAttribute("aScale", new THREE.Float32BufferAttribute(scales.length ? scales : [0], 1));
+    geo.setAttribute("aHeat", new THREE.Float32BufferAttribute(heats.length ? heats : [0], 1));
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(N / 2, 4, N / 2), 200);
     return geo;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,6 +336,84 @@ export function Clouds() {
       castShadow={false}
       receiveShadow={false}
       renderOrder={-1}
+    />
+  );
+}
+
+const MAX_FIRES = 48;
+const _fireDummy = new THREE.Object3D();
+
+/** Conos naranja que parpadean sobre cada parcela en llamas. Se leen cada frame. */
+export function FireGlow() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const tRef = useRef(0);
+  const geometry = useMemo(() => {
+    const g = new THREE.ConeGeometry(0.32, 1.05, 5);
+    g.translate(0, 0.52, 0);
+    return g;
+  }, []);
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: 0xff5a22,
+        transparent: true,
+        opacity: 0.78,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
+
+  useFrame((_, dt) => {
+    const mesh = ref.current;
+    if (!mesh || !sim) return;
+    tRef.current += dt;
+    const t = tRef.current;
+    const g = sim.grid;
+    let n = 0;
+    for (const b of sim.buildings) {
+      if (b.burning <= 0) continue;
+      if (n >= MAX_FIRES) break;
+      const def = DEFS[b.kind]!;
+      let top = 0;
+      for (let zz = 0; zz < b.d; zz++) {
+        for (let xx = 0; xx < b.w; xx++) {
+          const i = g.at(b.x + xx, b.z + zz);
+          if (i >= 0) top = Math.max(top, g.height[i]!);
+        }
+      }
+      const h = def.style.floors * def.style.floorH;
+      const pulse = 0.82 + Math.sin(t * 8 + b.id) * 0.2;
+      _fireDummy.position.set(b.x + b.w / 2, Math.max(0.02, top) + h * 0.45, b.z + b.d / 2);
+      _fireDummy.rotation.set(0, t * 0.5 + b.id, 0);
+      _fireDummy.scale.set(b.w * 0.85 * pulse, (0.65 + h * 0.38) * pulse, b.d * 0.85 * pulse);
+      _fireDummy.updateMatrix();
+      mesh.setMatrixAt(n, _fireDummy.matrix);
+      n++;
+    }
+    if (mesh.count === 0 && n === 0) {
+      mesh.visible = false;
+      return;
+    }
+    mesh.count = n;
+    mesh.visible = n > 0;
+    if (n > 0) mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[geometry, material, MAX_FIRES]}
+      frustumCulled={false}
+      renderOrder={5}
+      visible={false}
     />
   );
 }

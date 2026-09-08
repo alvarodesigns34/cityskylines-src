@@ -113,6 +113,14 @@ export const PALETTES: Record<string, Palette> = {
     window: 0x4b6573,
     accent: 0x2f6f8a,
   },
+  campus: {
+    wall: [0xe4d4b4, 0xd7c49a, 0xefe3c8],
+    trim: 0xf7f0de,
+    roof: 0x3d6b5c,
+    base: 0x9a8b72,
+    window: 0x3a5462,
+    accent: 0xc4a35a,
+  },
   health: {
     wall: [0xf0f2f0, 0xe2e8e8, 0xf6f7f5],
     trim: 0xfbfcfa,

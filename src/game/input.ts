@@ -1,3 +1,15 @@
+/** Un slider o un botón no debe tragar WASD; un campo de texto sí. */
+function blocksGameKeys(el: HTMLElement): boolean {
+  if (el.isContentEditable) return true;
+  if (el.tagName === "TEXTAREA") return true;
+  if (el.tagName === "SELECT") return false;
+  if (el.tagName === "INPUT") {
+    const type = (el as HTMLInputElement).type;
+    return type !== "range" && type !== "checkbox" && type !== "button" && type !== "submit";
+  }
+  return Boolean(el.closest("textarea, [contenteditable='true']"));
+}
+
 const GAME_CODES = new Set([
   "KeyW",
   "KeyA",
@@ -61,14 +73,7 @@ class Input {
 
   private onDown = (e: KeyboardEvent) => {
     const el = e.target as HTMLElement | null;
-    if (
-      el &&
-      (el.tagName === "INPUT" ||
-        el.tagName === "TEXTAREA" ||
-        el.isContentEditable ||
-        el.closest("input, textarea, [contenteditable='true']"))
-    )
-      return;
+    if (el && blocksGameKeys(el)) return;
     this.keys.add(e.code);
     if (GAME_CODES.has(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) e.preventDefault();
   };

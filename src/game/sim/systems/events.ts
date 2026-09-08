@@ -21,7 +21,8 @@ export function tickEvents(sim: CitySim) {
   if (sim.pop < 40) return;
 
   if (!sim.seenFirstEvent && sim.day >= 3) {
-    startEvent(sim, sim.rand() < 0.55 ? "festival" : "boom");
+    const roll = sim.rand();
+    startEvent(sim, roll < 0.34 ? "festival" : roll < 0.67 ? "boom" : "heatwave");
     sim.seenFirstEvent = true;
     return;
   }
@@ -36,22 +37,24 @@ export function tickEvents(sim: CitySim) {
 }
 
 export function startEvent(sim: CitySim, kind: EventKind): CityEvent {
+  if (sim.event) endEvent(sim);
   const ev = buildEvent(sim, kind);
   sim.event = ev;
-  sim.lastEventAt = sim.tickCount;
+  sim.seenFirstEvent = true;
   applyStress(sim);
-  sim.pushNotice(`event:${kind}`, ev.title, ev.tone);
   return ev;
 }
 
 export function resolveEvent(sim: CitySim, choiceId: string): boolean {
   const ev = sim.event;
   if (!ev) return false;
-  const choice = ev.choices.find((c) => c.id === choiceId) ?? ev.choices[0];
+  const choice = ev.choices.find((c) => c.id === choiceId);
   if (!choice) return false;
-  applyChoice(sim, ev, choice.id);
+  const before = ev.endsAt;
+  const ok = applyChoice(sim, ev, choice.id);
+  if (!ok) return false;
   if (choice.id !== "wait") {
-    ev.endsAt = Math.min(ev.endsAt, sim.tickCount + DAY);
+    if (ev.endsAt === before) ev.endsAt = Math.min(ev.endsAt, sim.tickCount + DAY);
     ev.body = choice.hint;
     ev.choices = [WAIT];
   }
@@ -61,17 +64,16 @@ export function resolveEvent(sim: CitySim, choiceId: string): boolean {
 
 export function endEvent(sim: CitySim) {
   sim.event = null;
+  sim.lastEventAt = sim.tickCount;
   sim.powerStress = 0;
   sim.waterStress = 0;
   sim.fireBoost = 0;
 }
 
 function tickCycle(sim: CitySim) {
-  // Oscila despacio e independiente del stock R/C/I: auge y recesión de verdad.
+  // Oscila despacio e independiente del episodio: auge y recesión de fondo.
   const pull = (sim.rand() - 0.47) * 0.08;
   sim.cycle = clamp(sim.cycle + pull, -1, 1);
-  if (sim.event?.kind === "recession") sim.cycle = Math.min(sim.cycle, -0.35);
-  if (sim.event?.kind === "boom") sim.cycle = Math.max(sim.cycle, 0.35);
 }
 
 function applyStress(sim: CitySim) {
@@ -103,7 +105,7 @@ function pickKind(sim: CitySim): EventKind | null {
   if (sim.avgPollution > 0.28) push("strike", 3);
   if ((sim.serviceLevel.police ?? 0) < 0.25 && sim.pop > 90) push("crime", 3);
   if ((sim.serviceLevel.health ?? 0) < 0.22 && sim.pop > 110) push("outbreak", 3);
-  if ((sim.serviceLevel.fire ?? 0) < 0.2 && sim.tier >= 1 && sim.buildings.length > 18) push("firestorm", 2);
+  if ((sim.serviceLevel.fire ?? 0) < 0.2 && sim.tier >= 2 && sim.buildings.length > 18) push("firestorm", 2);
   if (sim.powerNeed > 40) push("outage", 2);
   if (sim.happiness > 58 && sim.occupancyR > 0.7) push("influx", 2);
   if (sim.occupancyC > 0.55) push("festival", 2);
@@ -147,7 +149,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         endsAt: now + DAY * 6,
         choices: [
           { id: "cut_tax", label: "Bajar IAE", hint: "El comercio respira; recaudas menos unos días." },
-          { id: "stimulus", label: "Inyectar 8.000 $", hint: "Ayudas a los locales con cargo a caja." },
+          { id: "stimulus", label: "Inyectar 8.000 $", hint: "Ayudas a los locales con cargo a caja.", cost: 8000 },
           WAIT,
         ],
       };
@@ -178,7 +180,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         demandR: 0.7,
         endsAt: now + DAY * 4,
         choices: [
-          { id: "water_ops", label: "Turno extra de agua (4.000 $)", hint: "El estrés hídrico baja a la mitad." },
+          { id: "water_ops", label: "Turno extra de agua (4.000 $)", hint: "El estrés hídrico baja a la mitad.", cost: 4000 },
           WAIT,
         ],
       };
@@ -193,7 +195,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         happy: 9,
         endsAt: now + DAY * 3,
         choices: [
-          { id: "sponsor", label: "Patrocinar (3.500 $)", hint: "Más ánimo y un extra de recaudación." },
+          { id: "sponsor", label: "Patrocinar (3.500 $)", hint: "Más ánimo y un extra de recaudación.", cost: 3500 },
           WAIT,
         ],
       };
@@ -208,7 +210,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         happy: -14,
         endsAt: now + DAY * 5,
         choices: [
-          { id: "patrol", label: "Patrullas extra (5.000 $)", hint: "La sensación de seguridad remonta unos días." },
+          { id: "patrol", label: "Patrullas extra (5.000 $)", hint: "La sensación de seguridad remonta unos días.", cost: 5000 },
           WAIT,
         ],
       };
@@ -238,7 +240,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         endsAt: now + DAY * 4,
         choices: [
           { id: "clean", label: "Industria limpia", hint: "Se activa la ordenanza; cuesta dinero cada día." },
-          { id: "raise_wage", label: "Plus (6.000 $)", hint: "La huelga se acorta." },
+          { id: "raise_wage", label: "Plus (6.000 $)", hint: "La huelga se acorta.", cost: 6000 },
           WAIT,
         ],
       };
@@ -253,7 +255,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         happy: -16,
         endsAt: now + DAY * 5,
         choices: [
-          { id: "clinic_rush", label: "Campaña sanitaria (7.000 $)", hint: "El brote pierde fuerza." },
+          { id: "clinic_rush", label: "Campaña sanitaria (7.000 $)", hint: "El brote pierde fuerza.", cost: 7000 },
           WAIT,
         ],
       };
@@ -269,7 +271,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         demandI: 0.65,
         endsAt: now + DAY * 3,
         choices: [
-          { id: "repair", label: "Reparar (9.000 $)", hint: "La potencia vuelve casi del todo." },
+          { id: "repair", label: "Reparar (9.000 $)", hint: "La potencia vuelve casi del todo.", cost: 9000 },
           WAIT,
         ],
       };
@@ -283,7 +285,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
         demandR: 0.7,
         endsAt: now + DAY * 3,
         choices: [
-          { id: "dispatch", label: "Movilizar (4.500 $)", hint: "La cobertura de bomberos se refuerza unos días." },
+          { id: "dispatch", label: "Movilizar (4.500 $)", hint: "La cobertura de bomberos se refuerza unos días.", cost: 4500 },
           WAIT,
         ],
       };
@@ -292,7 +294,7 @@ function buildEvent(sim: CitySim, kind: EventKind): CityEvent {
   }
 }
 
-function applyChoice(sim: CitySim, ev: CityEvent, id: string) {
+function applyChoice(sim: CitySim, ev: CityEvent, id: string): boolean {
   const pay = (n: number) => {
     if (sim.money < n) {
       sim.pushNotice("broke", "No hay fondos para esa medida.", "warn");
@@ -307,58 +309,58 @@ function applyChoice(sim: CitySim, ev: CityEvent, id: string) {
       sim.taxC = Math.max(TAX_MIN, sim.taxC - 0.05);
       ev.demandC = Math.min(1.05, ev.demandC + 0.4);
       ev.happy += 4;
-      break;
+      return true;
     case "stimulus":
-      if (!pay(8000)) return;
+      if (!pay(8000)) return false;
       ev.demandC = Math.min(1.1, ev.demandC + 0.35);
       ev.endsAt = sim.tickCount + DAY * 2;
-      break;
+      return true;
     case "housing":
       sim.policies.housingGrant = true;
       ev.demandR = Math.max(ev.demandR, 1.2);
-      break;
+      return true;
     case "water_ops":
-      if (!pay(4000)) return;
+      if (!pay(4000)) return false;
       ev.water *= 0.4;
-      break;
+      return true;
     case "sponsor":
-      if (!pay(3500)) return;
+      if (!pay(3500)) return false;
       ev.happy += 8;
       sim.money += 1800;
-      break;
+      return true;
     case "patrol":
-      if (!pay(5000)) return;
+      if (!pay(5000)) return false;
       ev.demandR = Math.max(ev.demandR, 0.85);
       ev.happy += 8;
-      break;
+      return true;
     case "clean":
       sim.policies.cleanIndustry = true;
       ev.demandI = Math.max(ev.demandI, 0.7);
       ev.endsAt = sim.tickCount + DAY * 2;
-      break;
+      return true;
     case "raise_wage":
-      if (!pay(6000)) return;
+      if (!pay(6000)) return false;
       ev.demandI = Math.max(ev.demandI, 0.75);
       ev.endsAt = sim.tickCount + DAY;
-      break;
+      return true;
     case "clinic_rush":
-      if (!pay(7000)) return;
+      if (!pay(7000)) return false;
       ev.demandR = Math.max(ev.demandR, 0.8);
       ev.happy += 10;
       ev.endsAt = sim.tickCount + DAY * 2;
-      break;
+      return true;
     case "repair":
-      if (!pay(9000)) return;
+      if (!pay(9000)) return false;
       ev.power = 0.08;
       ev.endsAt = sim.tickCount + Math.round(DAY * 0.6);
-      break;
+      return true;
     case "dispatch":
-      if (!pay(4500)) return;
+      if (!pay(4500)) return false;
       sim.fireBoost = 0.55;
       ev.endsAt = sim.tickCount + DAY;
-      break;
+      return true;
     default:
-      break;
+      return true;
   }
 }
 

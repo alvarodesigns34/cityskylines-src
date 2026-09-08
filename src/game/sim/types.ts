@@ -139,6 +139,8 @@ export interface EventChoice {
   id: string;
   label: string;
   hint: string;
+  /** Coste en $; el HUD desactiva el botón si no hay caja. */
+  cost?: number;
 }
 
 export interface CityEvent {
@@ -229,6 +231,7 @@ export interface Snapshot {
   policies: Policies;
   cycle: number;
   event: CityEvent | null;
+  burning: number;
 }
 
 export interface HistoryPoint {

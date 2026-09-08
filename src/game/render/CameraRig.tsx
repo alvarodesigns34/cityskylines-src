@@ -220,6 +220,7 @@ export function CameraRig({ interactive }: { interactive: boolean }) {
       if (pointers.current.size === 0) {
         mode.current = null;
         lastCell.current = null;
+        if (sim) sim.hover = null;
       }
     };
 

@@ -14,7 +14,7 @@ import { mulberry32 } from "./rng";
 import { readSave, type SaveBlob, writeSave } from "./save";
 import { updateEnvironment } from "./systems/environment";
 import { checkProgression, resolveBudget } from "./systems/economy";
-import { endEvent, resolveEvent as pickEventChoice, tickEvents } from "./systems/events";
+import { endEvent, resolveEvent as pickEventChoice, startEvent, tickEvents } from "./systems/events";
 import { ZONE_DEPTH, facingRoad, hasIsolatedRoads, rebuildNetwork } from "./systems/network";
 import { HOUSEHOLD_SIZE, updatePopulation } from "./systems/population";
 import { isHooked, updateServices } from "./systems/services";
@@ -44,6 +44,7 @@ import {
   type Building,
   type BudgetLine,
   type CityEvent,
+  type EventKind,
   type HistoryPoint,
   type Notice,
   type OverlayKind,
@@ -243,6 +244,11 @@ export class CitySim {
     const t = this.tickCount % TICKS_PER_DAY;
     this.dayFraction = t / TICKS_PER_DAY;
     this.hour = this.dayFraction * 24;
+    if (this.event && this.tickCount >= this.event.endsAt) {
+      endEvent(this);
+      updateDemand(this);
+      this.servicesDirty = true;
+    }
     if (t === 0) {
       this.day++;
       resolveBudget(this);
@@ -711,7 +717,7 @@ export class CitySim {
       nextTierPop: next?.pop ?? null,
       unlocked: TIERS.slice(0, this.tier + 1).flatMap((t) => t.unlocks),
 
-      notices: this.notices.slice(0, 4),
+      notices: this.notices.filter((n) => !n.key.startsWith("event:")).slice(0, 4),
       bankrupt: this.money < 0,
       history: this.history,
 
@@ -719,6 +725,7 @@ export class CitySim {
       policies: { ...this.policies },
       cycle: this.cycle,
       event: this.event,
+      burning: this.buildings.reduce((n, b) => n + (b.burning > 0 ? 1 : 0), 0),
     };
   }
 
@@ -772,11 +779,23 @@ export class CitySim {
   }
 
   chooseEvent(choiceId: string): boolean {
-    return pickEventChoice(this, choiceId);
+    const ok = pickEventChoice(this, choiceId);
+    if (ok) {
+      updateDemand(this);
+      this.servicesDirty = true;
+    }
+    return ok;
+  }
+
+  triggerEvent(kind: EventKind) {
+    startEvent(this, kind);
+    updateDemand(this);
+    this.servicesDirty = true;
   }
 
   clearEvent() {
     endEvent(this);
+    updateDemand(this);
   }
 
   static fromSave(blob: SaveBlob): CitySim | null {

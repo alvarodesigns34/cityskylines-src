@@ -1,16 +1,18 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { ZONE_DEPTH, roadSurface } from "../../sim/systems/network";
+import { ZONE_DEPTH, facingRoad, roadSurface } from "../../sim/systems/network";
 import { N, ROAD, TERRAIN, type OverlayKind } from "../../sim/types";
 import { sim, useGame } from "../../store";
 import { buildingGeometry } from "../geom/buildings";
+import { DEFS } from "../../sim/catalog";
 import { useSimVersion } from "../useSimVersion";
 
 const dummy = new THREE.Object3D();
 const _c = new THREE.Color();
 const _c2 = new THREE.Color();
 const CELLS = N * N;
+const ROT_Y = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 
 const ZONE_COLOR = ["#000000", "#3fa06a", "#3d7ec4", "#d09a3a"];
 
@@ -26,9 +28,11 @@ export function ZonePlates() {
   const zoning = tool.startsWith("zone-") || tool === "bulldoze";
   useFrame(() => {
     const m = matRef.current;
+    const mesh = ref.current;
     if (!m) return;
-    const target = overlay !== "none" ? 0.1 : zoning ? 0.5 : 0.17;
+    const target = overlay !== "none" ? 0.1 : zoning ? 0.5 : 0;
     m.opacity += (target - m.opacity) * 0.14;
+    if (mesh) mesh.visible = m.opacity > 0.02;
   });
 
   useLayoutEffect(() => {
@@ -41,15 +45,16 @@ export function ZonePlates() {
       if (!z || g.building[i]! >= 0 || g.road[i] !== ROAD.none) continue;
       const x = i % N;
       const zz = (i / N) | 0;
-      dummy.position.set(x + 0.5, g.height[i]! + 0.05, zz + 0.5);
+      dummy.position.set(x + 0.5, g.height[i]! + 0.08, zz + 0.5);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       mesh.setMatrixAt(n, dummy.matrix);
       _c.set(ZONE_COLOR[z]!);
-      // La alta densidad se ve más saturada.
-      if (g.density[i]) _c.multiplyScalar(1.25);
-      else _c.multiplyScalar(0.8);
+      const k = g.density[i] ? 1.12 : 0.82;
+      _c.r = Math.min(1, _c.r * k);
+      _c.g = Math.min(1, _c.g * k);
+      _c.b = Math.min(1, _c.b * k);
       mesh.setColorAt(n, _c);
       n++;
     }
@@ -61,7 +66,16 @@ export function ZonePlates() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, CELLS]} frustumCulled={false} renderOrder={2}>
       <boxGeometry args={[0.84, 0.02, 0.84]} />
-      <meshBasicMaterial ref={matRef} transparent opacity={0.17} toneMapped={false} depthWrite={false} />
+      <meshBasicMaterial
+        ref={matRef}
+        transparent
+        opacity={0.17}
+        toneMapped={false}
+        depthWrite={false}
+        polygonOffset
+        polygonOffsetFactor={-1}
+        polygonOffsetUnits={-1}
+      />
     </instancedMesh>
   );
 }
@@ -220,6 +234,7 @@ export function Ghost() {
     if (m && geo) {
       m.visible = check.ok;
       m.position.set(x + check.w / 2, top + 0.02, z + check.d / 2);
+      m.rotation.set(0, ROT_Y[facingRoad(g, x, z, check.w, check.d) & 3]!, 0);
       if (modelMat.current) modelMat.current.color.set("#7fe8c0");
     }
   });
@@ -286,7 +301,10 @@ export function Selection() {
     }
     l.visible = true;
     l.position.set(x + w / 2, Math.max(0.05, top) + 0.08, z + d / 2);
-    l.scale.set(w + 0.06, 1 + Math.sin(clock.elapsedTime * 3) * 0.12, d + 0.06);
+    const floors = b ? (DEFS[b.kind]?.style.floors ?? 1) : 1;
+    const fh = b ? (DEFS[b.kind]?.style.floorH ?? 0.9) : 0.9;
+    const hy = b ? Math.max(0.7, floors * fh * 0.85) : 0.5;
+    l.scale.set(w + 0.06, hy / 0.5 + Math.sin(clock.elapsedTime * 3) * 0.08, d + 0.06);
   });
 
   if (!selected) return null;

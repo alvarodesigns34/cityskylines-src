@@ -322,7 +322,7 @@ const placeables: BuildingDef[] = [
   def({
     kind: "fire", name: "Parque de bomberos", category: "service", w: 2, d: 2,
     jobs: 22, power: 8, water: 8, garbage: 3,
-    cost: 12000, upkeep: 195, amenity: 0.03, amenityRadius: 3, tier: 2,
+    cost: 12000, upkeep: 195, amenity: 0.03, amenityRadius: 3, tier: 1,
     service: { kind: "fire", radius: 13, strength: 1, capacity: 2200 },
     desc: "Sin cobertura, los incendios arrasan edificios enteros.",
     style: { shape: "civic", floors: 2, floorH: 1.2, roof: "flat", windows: "shop", palette: "fire", fill: 0.82 },
@@ -354,7 +354,7 @@ const placeables: BuildingDef[] = [
     cost: 52000, upkeep: 640, amenity: 0.28, amenityRadius: 8, tier: 3,
     service: { kind: "education", radius: 22, strength: 1.8, capacity: 7200 },
     desc: "Única. Sin ella las oficinas de una ciudad grande se quedan a medias.",
-    style: { shape: "civic", floors: 4, floorH: 1.25, roof: "hip", windows: "grid", palette: "civic", fill: 0.86 },
+    style: { shape: "civic", floors: 4, floorH: 1.25, roof: "hip", windows: "grid", palette: "campus", fill: 0.86 },
   }),
   def({
     kind: "city_hall", name: "Ayuntamiento", category: "service", w: 3, d: 2,
