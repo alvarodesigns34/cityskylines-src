@@ -349,6 +349,14 @@ const placeables: BuildingDef[] = [
     style: { shape: "flat", floors: 1, floorH: 0.3, roof: "flat", windows: "none", palette: "park", fill: 0.97 },
   }),
   def({
+    kind: "university", name: "Universidad", category: "service", w: 3, d: 3,
+    jobs: 90, jobEdu: 2, power: 28, water: 22, garbage: 12,
+    cost: 52000, upkeep: 640, amenity: 0.28, amenityRadius: 8, tier: 3,
+    service: { kind: "education", radius: 22, strength: 1.8, capacity: 7200 },
+    desc: "Única. Sin ella las oficinas de una ciudad grande se quedan a medias.",
+    style: { shape: "civic", floors: 4, floorH: 1.25, roof: "hip", windows: "grid", palette: "civic", fill: 0.86 },
+  }),
+  def({
     kind: "city_hall", name: "Ayuntamiento", category: "service", w: 3, d: 2,
     jobs: 40, jobEdu: 2, power: 16, water: 12, garbage: 6,
     cost: 28000, upkeep: 260, amenity: 0.35, amenityRadius: 8, tier: 2,
@@ -362,7 +370,7 @@ export const DEFS: Record<string, BuildingDef> = Object.fromEntries(
 );
 
 export const PLACEABLES = placeables.map((d) => d.kind);
-export const UNIQUE_KINDS = new Set(["city_hall"]);
+export const UNIQUE_KINDS = new Set(["city_hall", "university"]);
 
 /** Cadena de crecimiento por zona y densidad. */
 export const CHAIN: Record<string, string[]> = {
@@ -424,7 +432,7 @@ export const TIERS: Tier[] = [
   { name: "Aldea", pop: 0, bonus: 0, unlocks: ["Calles", "Zonas de baja densidad", "Central térmica", "Depósito de agua", "Plaza", "Vertedero"] },
   { name: "Pueblo", pop: 140, bonus: 9000, unlocks: ["Avenidas", "Colegio", "Consultorio", "Comisaría", "Parque urbano", "Bombeo de agua"] },
   { name: "Villa", pop: 450, bonus: 20000, unlocks: ["Alta densidad", "Instituto", "Bomberos", "Ayuntamiento", "Parque eólico"] },
-  { name: "Ciudad", pop: 1300, bonus: 45000, unlocks: ["Hospital", "Reciclaje", "Gran parque", "Huerta solar"] },
+  { name: "Ciudad", pop: 1300, bonus: 45000, unlocks: ["Hospital", "Reciclaje", "Gran parque", "Huerta solar", "Universidad"] },
   { name: "Gran ciudad", pop: 3200, bonus: 90000, unlocks: ["Autopistas"] },
   { name: "Metrópolis", pop: 7500, bonus: 180000, unlocks: ["Todo desbloqueado"] },
 ];

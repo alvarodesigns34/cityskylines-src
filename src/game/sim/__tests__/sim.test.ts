@@ -6,6 +6,7 @@ import { DEFS, ROADS, TIERS } from "../catalog";
 import { generateMap } from "../generate";
 import { ZONE_DEPTH } from "../systems/network";
 import { OCCUPANCY_DRAIN } from "../systems/population";
+import { startEvent } from "../systems/events";
 import { N, ROAD, SIM_DT, TERRAIN, TICKS_PER_DAY, idx, type Building } from "../types";
 
 const SEED = 4242;
@@ -574,3 +575,55 @@ test("un apagón corto no vacía la ciudad", () => {
   );
   assert.ok(OCCUPANCY_DRAIN <= 0.01, "el vaciado tiene que ser lento a escala de un día");
 });
+
+test("una recesión hunde la demanda comercial sin pedir más tiendas", () => {
+  const sim = seededCity();
+  run(sim, 800);
+  startEvent(sim, "recession");
+  sim.refreshAll();
+  assert.equal(sim.event?.kind, "recession");
+  assert.ok(sim.demandC < 0.55, `demanda C bajo recesión: ${sim.demandC.toFixed(2)}`);
+  sim.chooseEvent("cut_tax");
+  assert.ok(sim.taxC < 0.11, "bajar el IAE es una decisión real");
+});
+
+test("el episodio activo sobrevive a guardar y cargar", () => {
+  const sim = seededCity();
+  startEvent(sim, "heatwave");
+  const loaded = CitySim.fromSave(sim.toSave());
+  assert.ok(loaded, "carga");
+  assert.equal(loaded!.event?.kind, "heatwave");
+  assert.ok(loaded!.waterStress > 0, "el estrés de agua persiste");
+});
+
+test("un edificio en llamas se vacía y puede arder del todo", () => {
+  const sim = seededCity();
+  run(sim, 700);
+  const house = sim.buildings.find((b) => DEFS[b.kind]!.zone === "R");
+  assert.ok(house, "hay una casa");
+  const before = sim.buildings.length;
+  house!.burning = 24;
+  startEvent(sim, "firestorm");
+  run(sim, 240);
+  const still = sim.buildings.some((b) => b.burning > 0);
+  const gone = sim.buildings.length < before;
+  const notice = sim.notices.some((n) => n.key === "fire");
+  assert.ok(still || gone || notice, "el fuego deja huella: llama, escombros o aviso");
+});
+
+test("la universidad es única y se desbloquea en Ciudad", () => {
+  const sim = new CitySim(SEED);
+  const { x: ex, z: ez } = sim.entry;
+  assert.equal(sim.canPlace("build:university", ex + 2, ez + 2).ok, false, "bloqueada en Aldea");
+  const city = seededCity();
+  city.tier = 3;
+  city.money = 200000;
+  assert.ok(place(city, "university"), "se coloca la primera universidad");
+  assert.ok(city.hasUniversity);
+  assert.equal(
+    city.buildings.filter((b) => b.kind === "university").length,
+    1,
+  );
+  assert.equal(place(city, "university"), false, "la segunda se rechaza");
+});
+

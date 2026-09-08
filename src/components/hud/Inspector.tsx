@@ -43,6 +43,7 @@ export function Inspector() {
     }
     if (info.pollution > 0.35) problems.push("aire muy contaminado");
     if (info.noise > 0.5) problems.push("demasiado ruido");
+    if (b?.burning) problems.push("en llamas");
     if (!b && info.demand < 0.12) problems.push("demanda baja");
   }
 

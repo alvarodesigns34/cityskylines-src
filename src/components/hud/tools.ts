@@ -132,6 +132,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       build("police", ShieldCheck),
       build("fire", Flame),
       build("city_hall", Landmark),
+      build("university", GraduationCap),
     ],
   },
   {

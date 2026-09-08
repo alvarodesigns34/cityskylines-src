@@ -44,6 +44,8 @@ export function updateServices(sim: CitySim, rebuildCoverage = true) {
   // Las centrales dejan de comprarse combustible en bancarrota severa.
   if (sim.money < -20000) powerSupply *= 0.35;
   if (sim.policies.overtime) garbageCapacity *= 1.22;
+  if (sim.powerStress > 0) powerSupply *= 1 - sim.powerStress;
+  if (sim.waterStress > 0) waterNeed *= 1 + sim.waterStress;
 
   sim.powerSupply = powerSupply;
   sim.powerNeed = powerNeed;

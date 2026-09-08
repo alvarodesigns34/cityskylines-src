@@ -19,7 +19,10 @@ servicios → ver crecer y densificarse la ciudad → equilibrar presupuesto, hu
 5. El **valor del suelo** es el nudo del juego. Lo suben parques, colegios, sanidad y seguridad;
    lo hunden el humo, el ruido y la congestión. Cuando sube, los edificios suben de nivel solos.
 6. Los **colegios** elevan el nivel formativo, y sin él las oficinas no encuentran trabajadores
-   cualificados. Sin **bomberos**, los edificios arden de verdad.
+   cualificados. La **universidad** (única, a partir de Ciudad) es lo que de verdad llena las
+   oficinas grandes. Sin **bomberos**, el fuego se extiende de parcela en parcela.
+7. No es un bucle infinito de zonas. Hay **recesiones, ferias, olas de calor, huelgas, brotes e
+   incendios**. Cada episodio pide una decisión; pintar más casas no lo arregla.
 
 Controles: `WASD` mover · `Q`/`E` girar · `T`/`G` inclinar · rueda o `R`/`F` zoom · botón derecho
 orbitar · `1`–`9` herramientas · `Espacio` pausa · `Esc` cierra e inspecciona.

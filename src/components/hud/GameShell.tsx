@@ -39,10 +39,16 @@ export function GameShell() {
     const onHide = () => {
       if (document.hidden && useGame.getState().phase === "playing") useGame.getState().persistNow(false);
     };
+    const blurHud = (e: PointerEvent) => {
+      const btn = (e.target as HTMLElement | null)?.closest("button");
+      if (btn && btn.closest(".game-root")) btn.blur();
+    };
     document.addEventListener("visibilitychange", onHide);
+    document.addEventListener("pointerup", blurHud);
     return () => {
       input.detach();
       document.removeEventListener("visibilitychange", onHide);
+      document.removeEventListener("pointerup", blurHud);
     };
   }, []);
 
@@ -121,6 +127,7 @@ function PlayHud() {
   const setSpeed = useGame((s) => s.setSpeed);
   const persistNow = useGame((s) => s.persistNow);
   const toMenu = useGame((s) => s.toMenu);
+  const chooseEvent = useGame((s) => s.chooseEvent);
   const savedFlash = useGame((s) => s.savedFlash);
   const saveError = useGame((s) => s.saveError);
   const hoverReason = useGame((s) => s.hoverReason);
@@ -152,6 +159,7 @@ function PlayHud() {
       }
       if (e.code === "Space") {
         e.preventDefault();
+        (document.activeElement as HTMLElement | null)?.blur?.();
         togglePause();
       }
     };
@@ -188,6 +196,7 @@ function PlayHud() {
               {snapshot.rain > 0.35 ? " · lluvia" : ""}
               {snapshot.hour >= 20.5 || snapshot.hour < 6.2 ? " · noche" : ""}
               {paused ? " · pausa" : ""}
+              {snapshot.cycle < -0.4 ? " · recesión" : snapshot.cycle > 0.4 ? " · auge" : ""}
             </p>
           </div>
           <Chip icon={<Users className="size-3.5 text-zone-r" />} value={num(snapshot.pop)} label="hab." />
@@ -200,9 +209,10 @@ function PlayHud() {
           <button
             type="button"
             onClick={() => setPanel(panel === "budget" ? "none" : "budget")}
-            className={`hud-chip text-xs ${snapshot.money < 0 ? "text-danger" : "text-fg"}`}
+            className={`hud-chip text-xs ${snapshot.bankrupt || snapshot.money < 0 ? "text-danger" : "text-fg"}`}
           >
             <Coins className="size-3.5" />
+            {snapshot.bankrupt ? "Quiebra · " : ""}
             {money(snapshot.money)}
             <span className={`text-[10px] ${balance >= 0 ? "text-ok" : "text-danger"}`}>
               {balance >= 0 ? "+" : "−"}
@@ -246,6 +256,37 @@ function PlayHud() {
           </IconBtn>
         </div>
       </header>
+
+      {snapshot.event ? (
+        <div className="pointer-events-none absolute inset-x-0 top-[4.6rem] z-20 flex justify-center px-3 max-sm:top-auto max-sm:bottom-[11.5rem]">
+          <div
+            className={`pointer-events-auto hud-panel w-full max-w-md rounded-2xl px-3 py-2.5 ${
+              snapshot.event.tone === "warn" ? "ring-1 ring-danger/40" : snapshot.event.tone === "good" ? "ring-1 ring-ok/35" : ""
+            }`}
+          >
+            <p className={`text-xs font-medium ${snapshot.event.tone === "warn" ? "text-danger" : snapshot.event.tone === "good" ? "text-ok" : "text-fg"}`}>
+              {snapshot.event.title}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">{snapshot.event.body}</p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {snapshot.event.choices.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  title={c.hint}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    chooseEvent(c.id);
+                  }}
+                  className="hud-chip text-[11px] text-fg"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* --- columna izquierda --- */}
       <div className="pointer-events-none absolute top-24 left-3 flex w-[min(100%-1.5rem,15.5rem)] flex-col gap-2 max-sm:w-[min(48vw,13.5rem)] sm:left-4">
@@ -459,7 +500,10 @@ function IconBtn({
       type="button"
       aria-label={label}
       title={label}
-      onClick={onClick}
+      onClick={(e) => {
+        e.currentTarget.blur();
+        onClick();
+      }}
       className={`flex h-9 min-w-9 items-center justify-center rounded-[10px] px-2 text-muted transition-colors duration-150 hover:text-fg ${
         active ? "bg-raised text-fg" : ""
       }`}
@@ -495,7 +539,11 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           <li>
             Los colegios elevan el nivel formativo, y sin él las oficinas no encuentran trabajadores cualificados.
           </li>
-          <li>Vigila la basura, el paro y los atascos. Y no dejes barrios sin bomberos.</li>
+          <li>Vigila la basura, el paro y los atascos. Y no dejes barrios sin bomberos: el fuego se extiende.</li>
+          <li>
+            La ciudad no es un bucle de zonas. Llegan recesiones, ferias, olas de calor y brotes. Elige una medida o
+            aguanta; pintar más de lo mismo no los arregla.
+          </li>
           <li>
             Planta <strong>árboles</strong> para limpiar el aire y subir el valor del suelo. En Presupuesto hay
             políticas: ayuda a la vivienda, industria limpia y turno extra de basura.

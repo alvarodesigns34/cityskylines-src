@@ -1,6 +1,8 @@
 import { DEFS } from "../catalog";
 import type { CitySim } from "../city";
 import { clamp01, idx, lerp } from "../types";
+import { eventHappiness } from "./events";
+import { nearestRoad } from "./network";
 
 /** Personas por hogar. */
 export const HOUSEHOLD_SIZE = 2.5;
@@ -88,12 +90,15 @@ export function updatePopulation(sim: CitySim) {
     const watered = d.water > 0 ? (g.watered[i] ? sim.waterRatio : 0) : 1;
     const lv = g.landValue[i]!;
     const services =
-      (sim.grid.service.education![i]! * 0.22 +
-        sim.grid.service.health![i]! * 0.22 +
-        sim.grid.service.police![i]! * 0.24 +
-        sim.grid.service.leisure![i]! * 0.16 +
-        sim.grid.service.garbage![i]! * 0.16 * sim.garbageRatio);
+      (sim.grid.service.education![i]! * 0.2 +
+        sim.grid.service.health![i]! * 0.2 +
+        sim.grid.service.police![i]! * 0.22 +
+        sim.grid.service.leisure![i]! * 0.14 +
+        sim.grid.service.fire![i]! * 0.12 +
+        sim.grid.service.garbage![i]! * 0.12 * sim.garbageRatio);
     const nuisance = g.pollution[i]! * 0.6 + g.noise[i]! * 0.35;
+    const road = nearestRoad(g, b.x, b.z, b.w, b.d);
+    const localJam = road >= 0 ? clamp01(g.traffic[road]! * 0.5) : 0;
 
     // Bienestar de la parcela: la señal que decide llenarse, subir de nivel o vaciarse.
     const well = clamp01(
@@ -103,7 +108,8 @@ export function updatePopulation(sim: CitySim) {
         lv * 0.24 +
         services * 0.3 -
         nuisance * 0.45 -
-        sim.congestion * 0.12,
+        localJam * 0.16 -
+        sim.congestion * 0.05,
     );
     b.wellbeing = lerp(b.wellbeing, well, 0.05);
 
@@ -126,6 +132,7 @@ export function updatePopulation(sim: CitySim) {
       target *= 0.35 + 0.65 * (sim.jobFill[d.jobEdu] ?? 1);
     }
     target = clamp01(target);
+    if (b.burning > 0) target = Math.min(target, 0.12);
 
     const rate = target > b.occupancy ? OCCUPANCY_FILL : OCCUPANCY_DRAIN;
     b.occupancy = clamp01(b.occupancy + (target - b.occupancy) * rate);
@@ -174,6 +181,7 @@ export function updatePopulation(sim: CitySim) {
   const avgTax = (sim.taxR + sim.taxC + sim.taxI) / 3;
   happy -= (avgTax - 0.11) * 180;
   happy -= sim.rain * 4;
+  happy += eventHappiness(sim);
   sim.happiness = Math.max(3, Math.min(99, happy));
 }
 

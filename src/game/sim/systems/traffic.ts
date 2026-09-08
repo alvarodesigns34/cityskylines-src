@@ -1,6 +1,6 @@
 import { DEFS, ROADS } from "../catalog";
 import type { CitySim } from "../city";
-import { N, ROAD, TICKS_PER_DAY, clamp01, idx, type Vehicle } from "../types";
+import { N, ROAD, TICKS_PER_DAY, clamp01, idx, type Building, type Vehicle } from "../types";
 import { capacityOf, findPath, nearestRoad, roadSurface } from "./network";
 
 const CELLS = N * N;
@@ -24,6 +24,7 @@ let totalWork = 0;
 let perSample = 0;
 let cursor = -1;
 let pendingRoutes: Int32Array[] = [];
+const byId = new Map<number, Building>();
 
 /**
  * Tráfico agregado + vehículos visibles.
@@ -61,9 +62,11 @@ function beginAssignment(sim: CitySim) {
   totalHome = 0;
   totalWork = 0;
   pendingRoutes = [];
+  byId.clear();
 
   for (let k = 0; k < sim.buildings.length; k++) {
     const b = sim.buildings[k]!;
+    byId.set(b.id, b);
     const d = DEFS[b.kind]!;
     if (b.occupancy < 0.15) continue;
     if (d.homes) {
@@ -143,9 +146,8 @@ function commit(sim: CitySim) {
   }
 }
 
-function buildingById(sim: CitySim, id: number): (typeof sim.buildings)[number] | null {
-  for (const b of sim.buildings) if (b.id === id) return b;
-  return null;
+function buildingById(_sim: CitySim, id: number): Building | null {
+  return byId.get(id) ?? null;
 }
 
 function pickWeighted(sim: CitySim, list: number[], weights: number[], total: number): number {

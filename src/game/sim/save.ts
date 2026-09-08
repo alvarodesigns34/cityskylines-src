@@ -1,4 +1,4 @@
-import type { HistoryPoint, Policies } from "./types";
+import type { CityEvent, HistoryPoint, Policies } from "./types";
 
 export const SAVE_VERSION = 2;
 export const SAVE_KEY = "skyline-mini-save-v2";
@@ -16,6 +16,7 @@ export interface SavedBuilding {
   occupancy: number;
   age: number;
   wellbeing: number;
+  burning?: number;
 }
 
 export interface SaveBlob {
@@ -42,6 +43,11 @@ export interface SaveBlob {
   policies?: Partial<Policies>;
   paused?: boolean;
   speed?: number;
+  cycle?: number;
+  event?: CityEvent | null;
+  lastEventAt?: number;
+  seenFirstEvent?: boolean;
+  fireBoost?: number;
 }
 
 export function writeSave(blob: SaveBlob): boolean {

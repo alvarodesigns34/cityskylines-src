@@ -65,9 +65,8 @@ class Input {
       el &&
       (el.tagName === "INPUT" ||
         el.tagName === "TEXTAREA" ||
-        el.tagName === "BUTTON" ||
         el.isContentEditable ||
-        el.closest("button, [role='button']"))
+        el.closest("input, textarea, [contenteditable='true']"))
     )
       return;
     this.keys.add(e.code);

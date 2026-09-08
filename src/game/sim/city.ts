@@ -14,6 +14,7 @@ import { mulberry32 } from "./rng";
 import { readSave, type SaveBlob, writeSave } from "./save";
 import { updateEnvironment } from "./systems/environment";
 import { checkProgression, resolveBudget } from "./systems/economy";
+import { endEvent, resolveEvent as pickEventChoice, tickEvents } from "./systems/events";
 import { ZONE_DEPTH, facingRoad, hasIsolatedRoads, rebuildNetwork } from "./systems/network";
 import { HOUSEHOLD_SIZE, updatePopulation } from "./systems/population";
 import { isHooked, updateServices } from "./systems/services";
@@ -42,6 +43,7 @@ import {
   inBounds,
   type Building,
   type BudgetLine,
+  type CityEvent,
   type HistoryPoint,
   type Notice,
   type OverlayKind,
@@ -151,6 +153,14 @@ export class CitySim {
   demandI = 0.2;
   tier = 0;
   hasCityHall = false;
+  hasUniversity = false;
+  cycle = 0;
+  event: CityEvent | null = null;
+  lastEventAt = -99999;
+  seenFirstEvent = false;
+  powerStress = 0;
+  waterStress = 0;
+  fireBoost = 0;
 
   // Red
   roadCount = 0;
@@ -237,6 +247,7 @@ export class CitySim {
       this.day++;
       resolveBudget(this);
       checkProgression(this);
+      tickEvents(this);
     }
 
     if (this.netDirty) {
@@ -296,6 +307,7 @@ export class CitySim {
     refreshCandidates(this);
     assignTraffic(this);
     this.hasCityHall = this.buildings.some((b) => b.kind === "city_hall");
+    this.hasUniversity = this.buildings.some((b) => b.kind === "university");
     this.fieldsVersion++;
   }
 
@@ -483,6 +495,7 @@ export class CitySim {
         const bi = g.building[i]!;
         const b = this.buildings[bi];
         if (b && b.kind === "city_hall") this.hasCityHall = false;
+        if (b && b.kind === "university") this.hasUniversity = false;
         removeBuilding(this, bi);
         this.money -= check.cost;
         this.servicesDirty = true;
@@ -505,6 +518,7 @@ export class CitySim {
       if (index === null) return false;
       this.money -= check.cost;
       if (kind === "city_hall") this.hasCityHall = true;
+      if (kind === "university") this.hasUniversity = true;
       this.servicesDirty = true;
       this.treesVersion++;
       return true;
@@ -574,6 +588,7 @@ export class CitySim {
             upkeep: def!.upkeep,
             trips: b.trips,
             hooked: isHooked(this, b.x, b.z, b.w, b.d),
+            burning: b.burning > 0,
           }
         : null,
     };
@@ -702,6 +717,8 @@ export class CitySim {
 
       rain: this.rain,
       policies: { ...this.policies },
+      cycle: this.cycle,
+      event: this.event,
     };
   }
 
@@ -735,17 +752,31 @@ export class CitySim {
         occupancy: Number(b.occupancy.toFixed(3)),
         age: b.age,
         wellbeing: Number(b.wellbeing.toFixed(3)),
+        burning: b.burning || 0,
       })),
       history: this.history,
       rain: Number(this.rain.toFixed(3)),
       policies: { ...this.policies },
       paused: this.paused,
       speed: this.speed,
+      cycle: Number(this.cycle.toFixed(3)),
+      event: this.event,
+      lastEventAt: this.lastEventAt,
+      seenFirstEvent: this.seenFirstEvent,
+      fireBoost: this.fireBoost,
     };
   }
 
   persist(): boolean {
     return writeSave(this.toSave());
+  }
+
+  chooseEvent(choiceId: string): boolean {
+    return pickEventChoice(this, choiceId);
+  }
+
+  clearEvent() {
+    endEvent(this);
   }
 
   static fromSave(blob: SaveBlob): CitySim | null {
@@ -780,6 +811,13 @@ export class CitySim {
       housingGrant: blob.policies?.housingGrant ?? false,
       overtime: blob.policies?.overtime ?? false,
     };
+    sim.cycle = blob.cycle ?? 0;
+    sim.event = blob.event ?? null;
+    sim.lastEventAt = blob.lastEventAt ?? -99999;
+    sim.seenFirstEvent = blob.seenFirstEvent ?? Boolean(blob.event);
+    sim.fireBoost = blob.fireBoost ?? 0;
+    sim.powerStress = blob.event?.power ?? 0;
+    sim.waterStress = blob.event?.water ?? 0;
     const a = (blob.seed % 360) * (Math.PI / 180);
     sim.windX = Math.cos(a) * 0.9;
     sim.windZ = Math.sin(a) * 0.9;
@@ -801,6 +839,7 @@ export class CitySim {
         age: b.age ?? 200,
         wellbeing: b.wellbeing ?? 0.4,
         trips: 0,
+        burning: b.burning ?? 0,
       } satisfies Building;
     });
     // El índice tile→edificio se reconstruye: nunca se guarda un índice de array.
@@ -825,6 +864,8 @@ export class CitySim {
         b.rot = facingRoad(sim.grid, b.x, b.z, b.w, b.d);
       }
     }
+    sim.hasCityHall = sim.buildings.some((b) => b.kind === "city_hall");
+    sim.hasUniversity = sim.buildings.some((b) => b.kind === "university");
     sim.pushNotice("loaded", "Ciudad restaurada.", "good");
     return sim;
   }
@@ -878,6 +919,14 @@ class CitySimDefaults {
   demandC = 0.2;
   demandI = 0.2;
   hasCityHall = false;
+  hasUniversity = false;
+  cycle = 0;
+  event: CityEvent | null = null;
+  lastEventAt = -99999;
+  seenFirstEvent = false;
+  powerStress = 0;
+  waterStress = 0;
+  fireBoost = 0;
   roadCount = 0;
   connectedCity = false;
   notices: Notice[] = [];

@@ -92,6 +92,8 @@ export interface Building {
   wellbeing: number;
   /** Viajes diarios que genera; lo calcula el sistema de tráfico. */
   trips: number;
+  /** Ticks restantes en llamas; 0 = no arde. */
+  burning: number;
 }
 
 export interface Vehicle {
@@ -119,6 +121,41 @@ export interface Notice {
   text: string;
   kind: "info" | "warn" | "good";
   at: number;
+}
+
+export type EventKind =
+  | "recession"
+  | "boom"
+  | "heatwave"
+  | "festival"
+  | "crime"
+  | "influx"
+  | "strike"
+  | "outbreak"
+  | "outage"
+  | "firestorm";
+
+export interface EventChoice {
+  id: string;
+  label: string;
+  hint: string;
+}
+
+export interface CityEvent {
+  id: string;
+  kind: EventKind;
+  title: string;
+  body: string;
+  tone: "info" | "warn" | "good";
+  startedAt: number;
+  endsAt: number;
+  demandR: number;
+  demandC: number;
+  demandI: number;
+  happy: number;
+  water: number;
+  power: number;
+  choices: EventChoice[];
 }
 
 export interface BudgetLine {
@@ -190,6 +227,8 @@ export interface Snapshot {
 
   rain: number;
   policies: Policies;
+  cycle: number;
+  event: CityEvent | null;
 }
 
 export interface HistoryPoint {

@@ -2,6 +2,7 @@ import { DEFS, chainFor } from "../catalog";
 import type { CitySim } from "../city";
 import { hash2 } from "../rng";
 import { N, ZONE_OF_ID, clamp01, idx, type Zone } from "../types";
+import { demandMul } from "./events";
 import { ZONE_DEPTH, facingRoad } from "./network";
 
 const CELLS = N * N;
@@ -35,13 +36,13 @@ export function updateDemand(sim: CitySim) {
   const slackC = commercialJobs > 0.01 ? clamp01((0.88 - sim.occupancyC) * 2) * serviceStress : 0;
   const slackI = industrialJobs > 0.01 ? clamp01((0.88 - sim.occupancyI) * 2) * serviceStress : 0;
 
-  let dR = 0.34 + jobSurplus * 0.7 - slackR * 0.5 + (sim.happiness - 52) / 260;
-  // Reparto objetivo del empleo: comercio ~26% de la población, industria ~32%.
-  // La suma se acerca a la población activa (58%), para que no haya paro estructural.
-  const cNeed = sim.pop * 0.26;
-  let dC = 0.24 + ((cNeed - commercialJobs) / Math.max(18, cNeed)) * 0.8 - slackC * 0.3;
-  const iNeed = sim.pop * 0.32 + 8;
-  let dI = 0.24 + ((iNeed - industrialJobs) / Math.max(16, iNeed)) * 0.8 - slackI * 0.3;
+  let dR = 0.34 + jobSurplus * 0.28 - slackR * 0.5 + (sim.happiness - 52) / 220;
+  // El comercio ya no es un cupo fijo de la población: tira de vecinos *y* de educación
+  // (oficinas). La industria satura si el aire es irrespirable.
+  const cNeed = sim.pop * (0.18 + 0.12 * sim.eduLevel);
+  let dC = 0.22 + ((cNeed - commercialJobs) / Math.max(18, cNeed)) * 0.75 - slackC * 0.3;
+  const iNeed = sim.pop * 0.28 + 8;
+  let dI = 0.22 + ((iNeed - industrialJobs) / Math.max(16, iNeed)) * 0.75 - slackI * 0.3;
 
   // Los impuestos altos espantan; los bajos atraen.
   dR *= clamp01(1 - (sim.taxR - 0.09) * 2.6);
@@ -62,6 +63,18 @@ export function updateDemand(sim: CitySim) {
 
   if (sim.policies.housingGrant) dR += 0.14;
   if (sim.policies.cleanIndustry) dI *= 0.86;
+
+  // El ciclo y los episodios mueven la demanda fuera del bucle R↔C↔I.
+  dR *= demandMul(sim, "R");
+  dC *= demandMul(sim, "C");
+  dI *= demandMul(sim, "I");
+
+  if (sim.avgPollution > 0.38) {
+    dR *= 0.72;
+    dI *= 0.78;
+  }
+  if (sim.congestion > 0.52) dC *= 0.7;
+  if (sim.pop > 480 && !sim.hasUniversity) dC *= 0.78;
 
   sim.demandR = clamp01(dR);
   sim.demandC = clamp01(dC);
@@ -162,18 +175,77 @@ export function updateAbandon(sim: CitySim) {
     removeBuilding(sim, k);
     sim.pushNotice("abandon", "Se abandonan edificios: revisa servicios, empleo y contaminación.", "warn");
   }
-  // Incendios: sin cobertura de bomberos, algún edificio arde de verdad.
-  if (sim.tier >= 2 && sim.buildings.length > 12) {
-    const k = (sim.rand() * sim.buildings.length) | 0;
-    const b = sim.buildings[k];
-    if (b && DEFS[b.kind]!.zone !== "none") {
-      const cover = g.service.fire![idx(b.x, b.z)]!;
-      const risk = (1 - cover) * 0.0009 * (1 + DEFS[b.kind]!.pollution * 0.4);
+  tickFires(sim);
+}
+
+/** El fuego ya no es un sorteo silencioso: arde, se ve y salta al vecino si no hay bomberos. */
+function tickFires(sim: CitySim) {
+  const g = sim.grid;
+  const storm = sim.event?.kind === "firestorm";
+  let ignited = false;
+  let burned = 0;
+
+  for (let k = sim.buildings.length - 1; k >= 0; k--) {
+    const b = sim.buildings[k]!;
+    if (b.burning <= 0) continue;
+    b.burning -= 1;
+    b.occupancy = Math.max(0, b.occupancy - 0.08);
+    const cover = Math.min(1, g.service.fire![idx(b.x, b.z)]! + sim.fireBoost);
+    if (cover > 0.45 && sim.rand() < cover * 0.35) {
+      b.burning = 0;
+      continue;
+    }
+    if (storm || sim.rand() < 0.18) spreadFire(sim, b.x, b.z);
+    if (b.burning <= 0 || b.occupancy < 0.04) {
+      removeBuilding(sim, k);
+      burned++;
+    }
+  }
+
+  const canStart = sim.buildings.length > 10 && (sim.tier >= 1 || storm);
+  if (canStart) {
+    const tries = storm ? 3 : 1;
+    for (let t = 0; t < tries; t++) {
+      const k = (sim.rand() * sim.buildings.length) | 0;
+      const b = sim.buildings[k];
+      if (!b || b.burning > 0 || DEFS[b.kind]!.zone === "none") continue;
+      const cover = Math.min(1, g.service.fire![idx(b.x, b.z)]! + sim.fireBoost);
+      const risk = (1 - cover) * (storm ? 0.12 : 0.0014) * (1 + DEFS[b.kind]!.pollution * 0.5);
       if (sim.rand() < risk) {
-        removeBuilding(sim, k);
-        sim.pushNotice("fire", "Incendio sin cobertura de bomberos: un edificio ha ardido.", "warn");
+        b.burning = storm ? 28 : 18;
+        ignited = true;
       }
     }
+  }
+
+  if (burned) {
+    sim.markBuildingsChanged();
+    sim.pushNotice("fire", burned === 1 ? "Un edificio ha ardido hasta los cimientos." : `${burned} edificios han ardido.`, "warn");
+  } else if (ignited) {
+    sim.markBuildingsChanged();
+    sim.pushNotice("fire", "Hay un incendio. Sin bomberos cerca se va a extender.", "warn");
+  }
+}
+
+function spreadFire(sim: CitySim, x: number, z: number) {
+  const g = sim.grid;
+  const dirs = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  for (const [dx, dz] of dirs) {
+    const i = g.at(x + dx, z + dz);
+    if (i < 0) continue;
+    const bi = g.building[i]!;
+    if (bi < 0) continue;
+    const n = sim.buildings[bi];
+    if (!n || n.burning > 0) continue;
+    if (DEFS[n.kind]!.zone === "none") continue;
+    const cover = Math.min(1, g.service.fire![i]! + sim.fireBoost);
+    if (cover > 0.55) continue;
+    if (sim.rand() < 0.28 * (1 - cover)) n.burning = 16;
   }
 }
 
@@ -188,6 +260,7 @@ function tryReplace(sim: CitySim, index: number, kind: string): boolean {
     b.occupancy = Math.max(0.35, b.occupancy * 0.6);
     b.variant = (hash2(b.x, b.z, sim.seed + nd.level) * 1024) | 0;
     b.rot = facingRoad(sim.grid, b.x, b.z, b.w, b.d);
+    b.burning = 0;
     sim.markBuildingsChanged();
     return true;
   }
@@ -205,6 +278,7 @@ function tryReplace(sim: CitySim, index: number, kind: string): boolean {
   b.occupancy = Math.max(0.3, b.occupancy * 0.5);
   b.variant = (hash2(b.x, b.z, sim.seed + nd.level) * 1024) | 0;
   b.rot = facingRoad(sim.grid, b.x, b.z, b.w, b.d);
+  b.burning = 0;
   fillCells(sim, b, index);
   sim.markBuildingsChanged();
   return true;
@@ -267,6 +341,7 @@ export function spawnBuilding(sim: CitySim, x: number, z: number, kind: string):
     age: 0,
     wellbeing: 0.4,
     trips: 0,
+    burning: 0,
   };
   sim.buildings.push(b);
   fillCells(sim, b, index);

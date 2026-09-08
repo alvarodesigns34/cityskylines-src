@@ -23,7 +23,7 @@ export function CityCanvas({ interactive }: { interactive: boolean }) {
       gl={{
         antialias: true,
         powerPreference: "high-performance",
-        preserveDrawingBuffer: true,
+        preserveDrawingBuffer: false,
         alpha: false,
       }}
       onCreated={({ gl, scene }) => {
@@ -118,7 +118,9 @@ function SimTicker({ interactive }: { interactive: boolean }) {
       saveAcc.current += dt;
       if (saveAcc.current > 15) {
         saveAcc.current = 0;
-        persist(false);
+        // Fuera del frame: stringify + localStorage no pueden robar el swap.
+        const later = persist;
+        window.setTimeout(() => later(false), 0);
       }
     }
   });

@@ -3,7 +3,8 @@ import { DEFS, ROADS } from "./sim/catalog";
 import { CitySim, loadOrNull } from "./sim/city";
 import { hasSave } from "./sim/save";
 import { repayLoan, setTax, takeLoan } from "./sim/systems/economy";
-import { TICKS_PER_DAY, type OverlayKind, type PolicyId, type Snapshot, type Tool } from "./sim/types";
+import { startEvent } from "./sim/systems/events";
+import { TICKS_PER_DAY, type EventKind, type OverlayKind, type PolicyId, type Snapshot, type Tool } from "./sim/types";
 
 export type Phase = "menu" | "playing";
 export type Panel = "none" | "budget" | "stats" | "services";
@@ -36,6 +37,7 @@ interface GameStore {
   setPolicy: (id: PolicyId, on: boolean) => void;
   borrow: (amount: number) => void;
   repay: (amount: number) => void;
+  chooseEvent: (choiceId: string) => void;
 }
 
 export let sim: CitySim | null = null;
@@ -97,6 +99,14 @@ function exposeQa() {
     },
     get sim() {
       return city;
+    },
+    triggerEvent: (kind: EventKind) => {
+      startEvent(city, kind);
+      useGame.getState().pullSnapshot();
+    },
+    resolveEvent: (id: string) => {
+      city.chooseEvent(id);
+      useGame.getState().pullSnapshot();
     },
   };
 }
@@ -212,10 +222,16 @@ export const useGame = create<GameStore>((set, get) => ({
     const ok = sim.persist();
     if (ok) {
       if (flash) set({ savedFlash: Date.now(), hasSave: true, saveError: 0 });
-      else set({ hasSave: true, saveError: 0 });
+      else if (!get().hasSave || get().saveError) set({ hasSave: true, saveError: 0 });
     } else {
       set({ saveError: Date.now() });
     }
+  },
+
+  chooseEvent: (choiceId: string) => {
+    if (!sim) return;
+    sim.chooseEvent(choiceId);
+    set({ snapshot: sim.snapshot() });
   },
 
   changeTax: (zone, value) => {

@@ -19,17 +19,18 @@ const MAX_VEHICLES = 200;
 /** Coches, furgonetas, camiones y emergencias recorriendo las rutas reales del tráfico. */
 export function Vehicles() {
   const material = useMemo(() => createCityMaterial({ roughness: 0.32, metalness: 0.28 }), []);
-  const refs = [
-    useRef<THREE.InstancedMesh>(null),
-    useRef<THREE.InstancedMesh>(null),
-    useRef<THREE.InstancedMesh>(null),
-    useRef<THREE.InstancedMesh>(null),
-  ];
+  const ref0 = useRef<THREE.InstancedMesh>(null);
+  const ref1 = useRef<THREE.InstancedMesh>(null);
+  const ref2 = useRef<THREE.InstancedMesh>(null);
+  const ref3 = useRef<THREE.InstancedMesh>(null);
+  const refs = [ref0, ref1, ref2, ref3];
   useEffect(() => () => material.dispose(), [material]);
   useLayoutEffect(() => {
     for (const r of refs) {
       if (r.current) r.current.count = 0;
     }
+    // refs son estables (useRef); el array se recrea, los objetos no.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useFrame(() => {
@@ -52,9 +53,13 @@ export function Vehicles() {
     for (let k = 0; k < 4; k++) {
       const mesh = refs[k]!.current;
       if (!mesh) continue;
-      mesh.count = counts[k]!;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      const n = counts[k]!;
+      if (mesh.count === 0 && n === 0) continue;
+      mesh.count = n;
+      if (n > 0) {
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      }
     }
   });
 
@@ -89,10 +94,13 @@ export function Smoke() {
       let sources = 0;
       for (const b of sim.buildings) {
         const def = DEFS[b.kind]!;
-        if (!def.style.chimneys || b.occupancy < 0.2) continue;
-        if (sources > 60) break;
+        const onFire = b.burning > 0;
+        if (!onFire && (!def.style.chimneys || b.occupancy < 0.2)) continue;
+        if (sources > 70) break;
         const v = b.variant % variantsFor(b.kind);
-        const stacks = chimneysFor(b.kind, v);
+        const stacks = onFire
+          ? ([[0, def.style.floors * def.style.floorH * 0.85 + 0.4, 0]] as [number, number, number][])
+          : chimneysFor(b.kind, v);
         if (!stacks.length) continue;
         let top = 0;
         for (let zz = 0; zz < b.d; zz++) {
@@ -111,7 +119,7 @@ export function Smoke() {
           const puffs = 5;
           for (let p = 0; p < puffs; p++) {
             const seed = hash2(b.id * 13 + p, Math.round(lx * 100), 71);
-            const scale = 0.32 + hash2(b.id + p, p, 73) * 0.35 + def.pollution * 0.12;
+            const scale = 0.32 + hash2(b.id + p, p, 73) * 0.35 + def.pollution * 0.12 + (onFire ? 0.4 : 0);
             for (const [ux, uy] of [
               [-1, -1],
               [1, -1],
